@@ -9,151 +9,200 @@
 <body>
   <div class="container">
     <header>
-      <div class="logo">Court Vision 🏀</div>
+      <div class="logo">Court Vision</div>
       <nav>
         <a href="/" class="active">Home</a>
-        <a href="/compare">Compare</a>
         <a href="/players">Players</a>
         <a href="/team-trends">Teams</a>
         <a href="/shot-charts">Shot Charts</a>
+        <a href="/compare">Compare</a>
+        <a href="/advanced-metrics">Metrics</a>
       </nav>
     </header>
 
     <section class="hero">
-      <h2>Court Vision: NBA Analytics in Your Hands</h2>
-      <p>Connect to the NBA API and explore shot charts, player metrics, and team trends—all in one place.</p>
-      <button id="load-data">Load Top Scorers</button>
+      <h2>NBA Analytics Dashboard</h2>
+      <p>Real-time NBA statistics, shot charts, and advanced analytics at your fingertips.</p>
+      <button id="load-data">Load Today's Leaders</button>
     </section>
 
     <section class="visualization">
-      <h3>Top NBA Scorers</h3>
+      <h3>League Leaders</h3>
+      <div class="stat-selector">
+        <button class="stat-btn active" data-stat="PTS">Points</button>
+        <button class="stat-btn" data-stat="REB">Rebounds</button>
+        <button class="stat-btn" data-stat="AST">Assists</button>
+        <button class="stat-btn" data-stat="STL">Steals</button>
+        <button class="stat-btn" data-stat="BLK">Blocks</button>
+      </div>
       <div id="chart-container">
-        <p id="loading-message" style="text-align: center; padding: 20px;">Click "Load Top Scorers" to fetch data!</p>
-        <div id="scorers-list" style="display: none;"></div>
+        <p id="loading-message" style="text-align: center; padding: 20px;">Select a stat category above to view leaders</p>
+        <div id="scorers-list" style="display: none; overflow-x: auto;"></div>
+      </div>
+    </section>
+
+    <section class="quick-stats">
+      <h3>Quick Stats</h3>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h4>Total Players</h4>
+          <p class="stat-number" id="total-players">Loading...</p>
+        </div>
+        <div class="stat-card">
+          <h4>Active Teams</h4>
+          <p class="stat-number">30</p>
+        </div>
+        <div class="stat-card">
+          <h4>Current Season</h4>
+          <p class="stat-number">2023-24</p>
+        </div>
+        <div class="stat-card">
+          <h4>Games Today</h4>
+          <p class="stat-number" id="games-today">Loading...</p>
+        </div>
       </div>
     </section>
 
     <section class="features">
-      <div class="feature-card">
-        <h3>Interactive Shot Charts</h3>
-        <p>Visualize player shot distribution with dynamic filters for season, team, and player.</p>
-        <a href="/shot-charts" class="feature-btn">View Charts</a>
-      </div>
-      <div class="feature-card">
-        <h3>Advanced Metrics</h3>
-        <p>Dive into PER, TS%, and other advanced stats across seasons.</p>
-        <a href="/advanced-metrics" class="feature-btn">Explore Metrics</a>
-      </div>
-      <div class="feature-card">
-        <h3>Team Trends</h3>
-        <p>Analyze team performance, win-loss trends, and efficiency ratings.</p>
-        <a href="/team-trends" class="feature-btn">Analyze Teams</a>
-      </div>
-      <div class="feature-card">
-        <h3>Player Database</h3>
-        <p>Browse all NBA players with advanced filtering and sorting options.</p>
-        <a href="/players" class="feature-btn">View Players</a>
-      </div>
-      <div class="feature-card">
-        <h3>Compare Players</h3>
-        <p>Select up to 4 players to compare their stats side-by-side.</p>
-        <a href="/compare" class="feature-btn">Compare Now</a>
-      </div>
-      <div class="feature-card">
-        <h3>Export Data</h3>
-        <p>Download player and team data in CSV format for your own analysis.</p>
-        <a href="/players" class="feature-btn">Export Data</a>
+      <h3>Features</h3>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h4>Player Database</h4>
+          <p>Browse and filter all NBA players with detailed statistics</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h4>Shot Charts</h4>
+          <p>Interactive visualizations of player shooting patterns</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📈</div>
+          <h4>Team Analytics</h4>
+          <p>Deep dive into team performance and efficiency metrics</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚖️</div>
+          <h4>Player Comparison</h4>
+          <p>Compare up to 4 players side-by-side</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔬</div>
+          <h4>Advanced Metrics</h4>
+          <p>True Shooting %, Usage Rate, and more</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">💾</div>
+          <h4>Export Data</h4>
+          <p>Download player and team data in CSV format</p>
+        </div>
       </div>
     </section>
 
     <footer>
-      © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+      <p>© 2025 Court Vision • Built with Flask & NBA API</p>
+      <p class="footer-links">
+        <a href="https://github.com/yourusername/courtvision">GitHub</a> •
+        <a href="/api/docs">API Docs</a> •
+        <a href="/about">About</a>
+      </p>
     </footer>
   </div>
 
-  <style>
-    .feature-btn {
-      display: inline-block;
-      padding: 10px 20px;
-      background-color: var(--accent);
-      color: var(--secondary);
-      border: 2px solid var(--primary);
-      font-size: 14px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: all 0.3s;
-      text-decoration: none;
-      text-align: center;
-    }
-
-    .feature-btn:hover {
-      box-shadow: 4px 4px 0px var(--primary);
-      transform: translate(-2px, -2px);
-    }
-
-    nav a.active {
-      background-color: var(--accent);
-      color: var(--secondary);
-    }
-  </style>
-
   <script>
-    // Load top scorers when button is clicked
-    document.getElementById('load-data').addEventListener('click', async function() {
-      // Show loading message
+    let currentStat = 'PTS';
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+      loadLeaders('PTS');
+      loadQuickStats();
+      setupEventListeners();
+    });
+
+    function setupEventListeners() {
+      // Stat selector buttons
+      document.querySelectorAll('.stat-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.stat-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          currentStat = this.dataset.stat;
+          loadLeaders(currentStat);
+        });
+      });
+
+      // Load data button
+      document.getElementById('load-data').addEventListener('click', () => loadLeaders(currentStat));
+    }
+
+    async function loadLeaders(stat) {
       document.getElementById('loading-message').textContent = 'Loading data...';
       document.getElementById('loading-message').style.display = 'block';
       document.getElementById('scorers-list').style.display = 'none';
 
       try {
-        // Fetch data from the players API with sort by points
-        const response = await fetch('/api/players?sort_by=PTS&season=2023-24');
+        const response = await fetch(`/api/players?sort_by=${stat}&season=2023-24`);
         const data = await response.json();
 
         if (data.success) {
-          // Hide loading message
           document.getElementById('loading-message').style.display = 'none';
           document.getElementById('scorers-list').style.display = 'block';
 
-          // Get top 10 scorers
           const top10 = data.data.slice(0, 10);
 
-          // Create HTML table
-          let html = '<table style="width: 100%; border-collapse: collapse;">';
-          html += '<tr style="border-bottom: 2px solid black;">';
-          html += '<th style="padding: 10px; text-align: left;">Rank</th>';
-          html += '<th style="padding: 10px; text-align: left;">Player</th>';
-          html += '<th style="padding: 10px; text-align: left;">Team</th>';
-          html += '<th style="padding: 10px; text-align: left;">PPG</th>';
-          html += '<th style="padding: 10px; text-align: left;">FG%</th>';
-          html += '<th style="padding: 10px; text-align: left;">3P%</th>';
-          html += '</tr>';
+          let statLabel = {
+            'PTS': 'PPG',
+            'REB': 'RPG',
+            'AST': 'APG',
+            'STL': 'SPG',
+            'BLK': 'BPG'
+          }[stat];
+
+          let html = '<table>';
+          html += '<thead><tr>';
+          html += '<th>Rank</th>';
+          html += '<th>Player</th>';
+          html += '<th>Team</th>';
+          html += '<th>GP</th>';
+          html += `<th class="highlight">${statLabel}</th>`;
+          html += '<th>MIN</th>';
+          html += '<th>FG%</th>';
+          html += '</tr></thead><tbody>';
 
           top10.forEach((player, index) => {
-            html += `<tr style="border-bottom: 1px solid #ccc;">
-                      <td style="padding: 10px; font-weight: bold;">${index + 1}</td>
-                      <td style="padding: 10px;">
-                        <a href="/player/${player.PLAYER_ID}" style="color: #000; font-weight: bold;">
+            html += `<tr>
+                      <td class="rank">${index + 1}</td>
+                      <td class="player-name">
+                        <a href="/player/${player.PLAYER_ID}">
                           ${player.PLAYER_NAME}
                         </a>
                       </td>
-                      <td style="padding: 10px;">${player.TEAM_ABBREVIATION}</td>
-                      <td style="padding: 10px; font-weight: bold; color: #FF5E5B;">${player.PTS}</td>
-                      <td style="padding: 10px;">${player.FG_PCT}%</td>
-                      <td style="padding: 10px;">${player.FG3_PCT}%</td>
+                      <td>${player.TEAM_ABBREVIATION}</td>
+                      <td>${player.GP}</td>
+                      <td class="stat-highlight">${player[stat]}</td>
+                      <td>${player.MIN}</td>
+                      <td>${player.FG_PCT}%</td>
                     </tr>`;
           });
 
-          html += '</table>';
-
+          html += '</tbody></table>';
           document.getElementById('scorers-list').innerHTML = html;
+
+          // Update total players count
+          document.getElementById('total-players').textContent = data.count || '500+';
         } else {
           document.getElementById('loading-message').textContent = 'Error loading data: ' + data.error;
         }
       } catch (error) {
         document.getElementById('loading-message').textContent = 'Error: Could not connect to server';
       }
-    });
+    }
+
+    async function loadQuickStats() {
+      // Simulate loading quick stats - in production, these would come from API
+      setTimeout(() => {
+        document.getElementById('games-today').textContent = Math.floor(Math.random() * 15) + 1;
+      }, 1000);
+    }
   </script>
 </body>
 </html>

@@ -18,13 +18,15 @@ body {
   display: flex;
   justify-content: center;
   padding: 20px;
+  min-height: 100vh;
 }
 
 .container {
   width: 100%;
-  max-width: 1000px;
+  max-width: 1200px;
 }
 
+/* Header */
 header {
   display: flex;
   justify-content: space-between;
@@ -37,32 +39,48 @@ header {
   background-color: var(--secondary);
   position: relative;
 }
+
 header::before {
   content: '';
   position: absolute;
-  top: 6px; left: 6px; right: -6px; bottom: -6px;
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
   border: 1px solid var(--primary);
   z-index: -1;
   border-radius: 12px;
 }
+
 .logo {
-  font-size: 24px;
-  font-weight: bold;
+  font-size: 28px;
+  font-weight: 700;
 }
+
+nav {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
 nav a {
-  margin-left: 20px;
   text-decoration: none;
   color: var(--primary);
   font-weight: bold;
   border: 2px solid var(--primary);
-  padding: 8px 12px;
+  padding: 8px 16px;
   transition: all 0.3s;
-}
-nav a:hover {
-  box-shadow: 4px 4px 0px var(--primary);
-  transform: translate(-2px, -2px);
+  background-color: var(--secondary);
 }
 
+nav a:hover, nav a.active {
+  box-shadow: 4px 4px 0 var(--primary);
+  transform: translate(-2px, -2px);
+  background-color: var(--accent);
+  color: var(--secondary);
+}
+
+/* Hero Section */
 .hero {
   text-align: center;
   border: 1px solid var(--primary);
@@ -73,22 +91,31 @@ nav a:hover {
   margin-bottom: 40px;
   position: relative;
 }
+
 .hero::before {
   content: '';
   position: absolute;
-  top: 6px; left: 6px; right: -6px; bottom: -6px;
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
   border: 1px solid var(--primary);
   z-index: -1;
   border-radius: 12px;
 }
+
 .hero h2 {
-  font-size: 32px;
+  font-size: 36px;
+  font-weight: 700;
   margin-bottom: 20px;
 }
+
 .hero p {
   font-size: 18px;
   margin-bottom: 30px;
+  color: #666;
 }
+
 .hero button {
   padding: 12px 30px;
   background-color: var(--accent);
@@ -99,87 +126,310 @@ nav a:hover {
   cursor: pointer;
   transition: all 0.3s;
 }
+
 .hero button:hover {
-  box-shadow: 4px 4px 0px var(--primary);
+  box-shadow: 4px 4px 0 var(--primary);
   transform: translate(-2px, -2px);
 }
 
+/* Visualization Section */
 .visualization {
   border: 1px solid var(--primary);
-  padding: 20px;
+  padding: 30px;
   box-shadow: var(--shadow);
   border-radius: 12px;
   position: relative;
   margin-bottom: 40px;
   background-color: var(--secondary);
 }
+
 .visualization::before {
   content: '';
   position: absolute;
-  top: 6px; left: 6px; right: -6px; bottom: -6px;
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
   border: 1px solid var(--primary);
   z-index: -1;
   border-radius: 12px;
-}
-#chart-container {
-  width: 100%;
-  height: 400px;
-  margin-top: 20px;
 }
 
-.features {
-  display: grid;
-  grid-template-columns: repeat(auto-fill,minmax(280px,1fr));
-  gap: 30px;
-  margin-bottom: 40px;
-}
-.feature-card {
-  border: 1px solid var(--primary);
-  padding: 20px;
-  box-shadow: var(--shadow);
-  border-radius: 12px;
-  background-color: var(--secondary);
-  position: relative;
-  text-align: center;
-}
-.feature-card::before {
-  content: '';
-  position: absolute;
-  top: 6px; left: 6px; right: -6px; bottom: -6px;
-  border: 1px solid var(--primary);
-  z-index: -1;
-  border-radius: 12px;
-}
-.feature-card h3 {
-  font-size: 20px;
-  margin-bottom: 12px;
-}
-.feature-card p {
-  font-size: 14px;
+.visualization h3 {
+  font-size: 24px;
+  font-weight: 700;
   margin-bottom: 20px;
 }
-.feature-card button {
-  padding: 10px 20px;
-  background-color: var(--accent);
-  color: var(--secondary);
+
+/* Stat Selector */
+.stat-selector {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.stat-btn {
+  padding: 8px 20px;
   border: 2px solid var(--primary);
-  font-size: 14px;
+  background-color: var(--secondary);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.3s;
 }
-.feature-card button:hover {
-  box-shadow: 4px 4px 0px var(--primary);
+
+.stat-btn.active {
+  background-color: var(--primary);
+  color: var(--secondary);
+}
+
+.stat-btn:hover {
+  box-shadow: 4px 4px 0 var(--primary);
   transform: translate(-2px, -2px);
 }
 
+/* Chart Container */
+#chart-container {
+  min-height: 400px;
+  overflow-x: auto;
+}
+
+#chart-container table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#chart-container th {
+  background-color: var(--primary);
+  color: var(--secondary);
+  padding: 12px;
+  text-align: left;
+  font-weight: bold;
+}
+
+#chart-container td {
+  padding: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+#chart-container tr:hover {
+  background-color: #f5f5f5;
+}
+
+#chart-container .rank {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+#chart-container .player-name a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+#chart-container .player-name a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+#chart-container .stat-highlight {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+#chart-container th.highlight {
+  background-color: var(--accent);
+}
+
+/* Quick Stats */
+.quick-stats {
+  margin-bottom: 40px;
+}
+
+.quick-stats h3 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.stat-card {
+  border: 1px solid var(--primary);
+  padding: 30px 20px;
+  box-shadow: var(--shadow);
+  border-radius: 12px;
+  background-color: var(--secondary);
+  position: relative;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
+  border: 1px solid var(--primary);
+  z-index: -1;
+  border-radius: 12px;
+}
+
+.stat-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 10px 10px 0 var(--primary);
+}
+
+.stat-card h4 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.stat-number {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Features Section */
+.features {
+  margin-bottom: 40px;
+}
+
+.features h3 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.feature-card {
+  border: 1px solid var(--primary);
+  padding: 30px;
+  box-shadow: var(--shadow);
+  border-radius: 12px;
+  background-color: var(--secondary);
+  position: relative;
+  transition: all 0.3s;
+}
+
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
+  border: 1px solid var(--primary);
+  z-index: -1;
+  border-radius: 12px;
+}
+
+.feature-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 10px 10px 0 var(--primary);
+}
+
+.feature-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
+.feature-card h4 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.feature-card p {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+}
+
+/* Footer */
 footer {
   text-align: center;
-  font-size: 14px;
-  color: var(--primary);
+  padding: 40px 20px;
+  margin-top: 60px;
+  border-top: 2px solid var(--primary);
 }
-footer a {
+
+footer p {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.footer-links a {
   color: var(--primary);
   font-weight: bold;
+  text-decoration: none;
+  margin: 0 10px;
+  transition: color 0.3s;
+}
+
+.footer-links a:hover {
+  color: var(--accent);
   text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  nav {
+    justify-content: center;
+  }
+
+  nav a {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+
+  .hero h2 {
+    font-size: 28px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .stat-number {
+    font-size: 28px;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-selector {
+    justify-content: center;
+  }
+
+  #chart-container {
+    font-size: 14px;
+  }
+
+  #chart-container th,
+  #chart-container td {
+    padding: 8px;
+  }
 }

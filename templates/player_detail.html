@@ -105,19 +105,20 @@
             header.innerHTML = `
                 <div class="player-info-main">
                     <div class="player-avatar-large">
-                        ${info.PLAYER_NAME ? info.PLAYER_NAME.split(' ').map(n => n[0]).join('') : 'NA'}
+                        ${info.DISPLAY_FIRST_LAST ? info.DISPLAY_FIRST_LAST.split(' ').map(n => n[0]).join('') : 'NA'}
                     </div>
                     <div class="player-details">
-                        <h1>${info.PLAYER_NAME || 'Unknown Player'}</h1>
-                        <p class="player-meta">${info.TEAM_CITY || ''} ${info.TEAM_NAME || ''} • #${info.JERSEY || 'N/A'}</p>
+                        <h1>${info.DISPLAY_FIRST_LAST || 'Unknown Player'}</h1>
+                        <p class="player-meta">${info.TEAM_NAME || 'Free Agent'} • #${info.JERSEY || 'N/A'} • ${info.POSITION || 'N/A'}</p>
                         <div class="player-physical">
                             <span>Height: ${info.HEIGHT || 'N/A'}</span>
                             <span>Weight: ${info.WEIGHT || 'N/A'} lbs</span>
-                            <span>Age: ${info.AGE || 'N/A'}</span>
+                            <span>Born: ${info.BIRTHDATE ? new Date(info.BIRTHDATE).toLocaleDateString() : 'N/A'}</span>
+                            <span>Experience: ${info.SEASON_EXP || '0'} years</span>
                         </div>
                     </div>
                 </div>
-                <button onclick="addToCompare(${playerId}, '${info.PLAYER_NAME}')" class="compare-large-btn">
+                <button onclick="addToCompare(${playerId}, '${info.DISPLAY_FIRST_LAST || ''}')" class="compare-large-btn">
                     Add to Compare
                 </button>
             `;

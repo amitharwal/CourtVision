@@ -230,14 +230,14 @@
                             <div class="shooting-bar">
                                 <span class="bar-label">FG%</span>
                                 <div class="bar-bg">
-                                    <div class="bar-fill" style="width: ${player.FG_PCT}%"></div>
+                                    <div class="bar-fill" style="width: ${Math.min(player.FG_PCT, 100)}%"></div>
                                 </div>
                                 <span class="bar-value">${player.FG_PCT}%</span>
                             </div>
                             <div class="shooting-bar">
                                 <span class="bar-label">3P%</span>
                                 <div class="bar-bg">
-                                    <div class="bar-fill" style="width: ${player.FG3_PCT}%"></div>
+                                    <div class="bar-fill" style="width: ${Math.min(player.FG3_PCT, 100)}%"></div>
                                 </div>
                                 <span class="bar-value">${player.FG3_PCT}%</span>
                             </div>

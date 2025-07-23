@@ -292,7 +292,10 @@
             if (stat.includes('PCT')) {
                 return value.toFixed(1) + '%';
             }
-            return value.toFixed(1);
+            if (stat === 'MIN' || stat === 'PTS' || stat === 'REB' || stat === 'AST' || stat === 'STL' || stat === 'BLK') {
+                return value.toFixed(1);
+            }
+            return Math.round(value);
         }
 
         function createBar(value) {

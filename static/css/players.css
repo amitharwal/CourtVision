@@ -277,16 +277,30 @@ nav a:hover, nav a.active {
 }
 
 .player-card {
-  border: 2px solid var(--primary);
+  border: 1px solid var(--primary);
   background-color: var(--secondary);
   box-shadow: var(--shadow);
   transition: all 0.3s;
   overflow: hidden;
+  position: relative;
+  border-radius: 12px;
+}
+
+.player-card::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
+  border: 1px solid var(--primary);
+  z-index: -1;
+  border-radius: 12px;
 }
 
 .player-card:hover {
   transform: translate(-2px, -2px);
-  box-shadow: var(--shadow-hover);
+  box-shadow: 10px 10px 0 var(--primary);
 }
 
 .card-header {
@@ -554,33 +568,33 @@ footer a {
 
 /* Responsive */
 @media (max-width: 768px) {
-    header {
-        flex-direction: column;
-        gap: 20px;
-    }
+  header {
+    flex-direction: column;
+    gap: 20px;
+  }
 
-    nav {
-        flex-wrap: wrap;
-        justify-content: center;
-    }
+  nav {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 
-    .filters {
-        flex-direction: column;
-    }
+  .filters {
+    flex-direction: column;
+  }
 
-    .filter-group {
-        width: 100%;
-    }
+  .filter-group {
+    width: 100%;
+  }
 
-    .players-grid {
-        grid-template-columns: 1fr;
-    }
+  .players-grid {
+    grid-template-columns: 1fr;
+  }
 
-    .players-table {
-        font-size: 12px;
-    }
+  .players-table {
+    font-size: 12px;
+  }
 
-    .players-table th, .players-table td {
-        padding: 8px;
-    }
+  .players-table th, .players-table td {
+    padding: 8px;
+  }
 }
