@@ -302,7 +302,10 @@
             svg.querySelectorAll('.shot').forEach(el => el.remove());
 
             // Plot new shots
-            shots.forEach(shot => {
+            shots.forEach((shot, index) => {
+                // Skip shots with invalid coordinates
+                if (!shot.LOC_X || !shot.LOC_Y || shot.LOC_Y > 470) return;
+
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', 250 + shot.LOC_X / 10);
                 circle.setAttribute('cy', shot.LOC_Y / 10);
@@ -314,7 +317,9 @@
                 circle.setAttribute('class', 'shot');
 
                 // Tooltip
-                circle.innerHTML = `<title>${shot.SHOT_TYPE}\n${shot.SHOT_DISTANCE}ft\n${shot.SHOT_MADE_FLAG ? 'Made' : 'Missed'}</title>`;
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                title.textContent = `${shot.SHOT_TYPE || 'Shot'}\n${shot.SHOT_DISTANCE || '?'}ft\n${shot.SHOT_MADE_FLAG ? 'Made' : 'Missed'}`;
+                circle.appendChild(title);
 
                 svg.appendChild(circle);
             });

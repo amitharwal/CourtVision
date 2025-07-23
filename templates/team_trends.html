@@ -221,6 +221,7 @@
             `;
 
             // Efficiency stats
+            const netRating = teamData.NET_RATING || 0;
             document.getElementById('efficiency-stats').innerHTML = `
                 <div class="stat-item">
                     <span class="stat-label">Offensive Rating</span>
@@ -232,7 +233,7 @@
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Net Rating</span>
-                    <span class="stat-value ${teamData.NET_RATING > 0 ? 'positive' : 'negative'}">${(teamData.NET_RATING || 0).toFixed(1)}</span>
+                    <span class="stat-value ${netRating > 0 ? 'positive' : netRating < 0 ? 'negative' : ''}">${netRating.toFixed(1)}</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Pace</span>
@@ -330,13 +331,13 @@
         function generateMonthlyChart() {
             // Simplified chart - in real app would use actual monthly data
             const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
-            const values = months.map(() => Math.random() * 100);
+            const values = months.map(() => Math.floor(Math.random() * 40) + 30);
 
             return months.map((month, i) => `
                 <div class="bar-column">
+                    <span class="bar-value">${values[i]}%</span>
                     <div class="bar" style="height: ${values[i]}%"></div>
                     <span class="bar-label">${month}</span>
-                    <span class="bar-value">${values[i].toFixed(0)}%</span>
                 </div>
             `).join('');
         }

@@ -194,6 +194,26 @@ nav a:hover, nav a.active {
   overflow-x: auto;
 }
 
+.table-container {
+  border: 1px solid var(--primary);
+  box-shadow: var(--shadow);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.table-container::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
+  border: 1px solid var(--primary);
+  z-index: -1;
+  border-radius: 12px;
+}
+
 #chart-container table {
   width: 100%;
   border-collapse: collapse;

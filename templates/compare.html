@@ -250,14 +250,14 @@
 
                     selectedPlayers.forEach(player => {
                         const stats = playerStats[player.id];
-                        const value = stats ? stats[stat] : 0;
+                        const value = stats ? (stats[stat] || 0) : 0;
                         const isMax = value === maxValue && value > 0;
                         const displayValue = formatStatValue(stat, value);
 
                         html += `
                             <div class="stat-value-cell ${isMax ? 'best-value' : ''}">
                                 ${displayValue}
-                                ${stat.includes('PCT') ? createBar(value) : ''}
+                                ${stat.includes('PCT') && !isNaN(value) ? createBar(value) : ''}
                             </div>
                         `;
                     });
@@ -289,6 +289,9 @@
         }
 
         function formatStatValue(stat, value) {
+            if (value === 0 || value === null || value === undefined || isNaN(value)) {
+                return '0';
+            }
             if (stat.includes('PCT')) {
                 return value.toFixed(1) + '%';
             }
