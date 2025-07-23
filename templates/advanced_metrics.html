@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Metrics - Court Vision</title>
+    <link rel="stylesheet" href="/static/css/advanced_metrics.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">Court Vision</div>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/compare">Compare</a>
+                <a href="/players">Players</a>
+                <a href="/team-trends">Teams</a>
+                <a href="/shot-charts">Shot Charts</a>
+            </nav>
+        </header>
+
+        <section class="metrics-header">
+            <h2>Advanced NBA Metrics Dashboard</h2>
+            <p>Deep dive into PER, True Shooting %, Usage Rate, and other advanced statistics</p>
+        </section>
+
+        <section class="metrics-controls">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="metric-select">Select Metric</label>
+                    <select id="metric-select">
+                        <option value="TS_PCT">True Shooting %</option>
+                        <option value="EFF">Efficiency Rating</option>
+                        <option value="USG_PCT">Usage Rate</option>
+                        <option value="AST_PCT">Assist %</option>
+                        <option value="REB_PCT">Rebound %</option>
+                        <option value="PIE">Player Impact Estimate</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="season-select">Season</label>
+                    <select id="season-select">
+                        <option value="2023-24">2023-24</option>
+                        <option value="2022-23">2022-23</option>
+                        <option value="2021-22">2021-22</option>
+                        <option value="2020-21">2020-21</option>
+                        <option value="2019-20">2019-20</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="min-games">Min Games Played</label>
+                    <input type="number" id="min-games" value="20" min="1" max="82">
+                </div>
+
+                <button id="load-metrics" class="load-btn">Load Metrics</button>
+            </div>
+        </section>
+
+        <section class="metric-explanation">
+            <h3 id="metric-name">True Shooting %</h3>
+            <p id="metric-description">True Shooting Percentage (TS%) measures shooting efficiency by accounting for field goals, 3-pointers, and free throws.</p>
+            <div id="metric-formula" class="formula">
+                Formula: PTS / (2 * (FGA + 0.44 * FTA))
+            </div>
+        </section>
+
+        <section id="metrics-visualization" class="metrics-visualization" style="display: none;">
+            <div class="viz-tabs">
+                <button class="viz-tab active" data-view="leaders">League Leaders</button>
+                <button class="viz-tab" data-view="distribution">Distribution</button>
+                <button class="viz-tab" data-view="comparison">Position Comparison</button>
+            </div>
+
+            <div id="viz-content" class="viz-content">
+                <!-- Visualization content will appear here -->
+            </div>
+        </section>
+
+        <section id="metrics-insights" class="metrics-insights" style="display: none;">
+            <h3>Key Insights</h3>
+            <div id="insights-grid" class="insights-grid">
+                <!-- Insights will appear here -->
+            </div>
+        </section>
+
+        <div id="loading" class="loading" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>Calculating advanced metrics...</p>
+        </div>
+
+        <footer>
+            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+        </footer>
+    </div>
+
+    <script>
+        const metricDescriptions = {
+            'TS_PCT': {
+                name: 'True Shooting %',
+                description: 'True Shooting Percentage (TS%) measures shooting efficiency by accounting for field goals, 3-pointers, and free throws.',
+                formula: 'PTS / (2 * (FGA + 0.44 * FTA))',
+                goodValue: 60,
+                eliteValue: 65
+            },
+            'EFF': {
+                name: 'Efficiency Rating',
+                description: 'A simple efficiency metric that combines positive contributions (points, rebounds, assists, steals, blocks) and negative ones (missed shots, turnovers, fouls).',
+                formula: '(PTS + REB + AST + STL + BLK) - ((FGA - FGM) + (FTA - FTM) + TOV)',
+                goodValue: 20,
+                eliteValue: 30
+            },
+            'USG_PCT': {
+                name: 'Usage Rate',
+                description: 'Usage Rate estimates the percentage of team plays used by a player while they were on the floor.',
+                formula: '100 * ((FGA + 0.44 * FTA + TOV) * (Tm MP / 5)) / (MP * (Tm FGA + 0.44 * Tm FTA + Tm TOV))',
+                goodValue: 25,
+                eliteValue: 30
+            },
+            'AST_PCT': {
+                name: 'Assist Percentage',
+                description: 'An estimate of the percentage of teammate field goals a player assisted while on the floor.',
+                formula: '100 * AST / (((MP / (Tm MP / 5)) * Tm FG) - FG)',
+                goodValue: 25,
+                eliteValue: 35
+            },
+            'REB_PCT': {
+                name: 'Rebound Percentage',
+                description: 'An estimate of the percentage of available rebounds a player grabbed while on the floor.',
+                formula: '100 * (REB * (Tm MP / 5)) / (MP * (Tm REB + Opp REB))',
+                goodValue: 15,
+                eliteValue: 20
+            },
+            'PIE': {
+                name: 'Player Impact Estimate',
+                description: 'PIE measures a player\'s overall statistical contribution against the total statistics in games they play in.',
+                formula: '(PTS + FGM + FTM - FGA - FTA + DREB + (0.5 * OREB) + AST + STL + (0.5 * BLK) - PF - TOV) / Game Total',
+                goodValue: 10,
+                eliteValue: 15
+            }
+        };
+
+        let currentMetric = 'TS_PCT';
+        let playersData = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+            updateMetricExplanation();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('metric-select').addEventListener('change', function() {
+                currentMetric = this.value;
+                updateMetricExplanation();
+                if (playersData.length > 0) {
+                    displayVisualization('leaders');
+                }
+            });
+
+            document.getElementById('load-metrics').addEventListener('click', loadMetrics);
+
+            document.querySelectorAll('.viz-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    document.querySelectorAll('.viz-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    displayVisualization(this.dataset.view);
+                });
+            });
+        }
+
+        function updateMetricExplanation() {
+            const metric = metricDescriptions[currentMetric];
+            document.getElementById('metric-name').textContent = metric.name;
+            document.getElementById('metric-description').textContent = metric.description;
+            document.getElementById('metric-formula').textContent = `Formula: ${metric.formula}`;
+        }
+
+        async function loadMetrics() {
+            showLoading(true);
+            hideAllSections();
+
+            const season = document.getElementById('season-select').value;
+            const minGames = document.getElementById('min-games').value;
+
+            try {
+                // Load player data with metrics
+                const response = await fetch(`/api/players?season=${season}&sort_by=${currentMetric}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    // Filter by minimum games
+                    playersData = data.data.filter(p => p.GP >= minGames);
+
+                    // Show sections
+                    document.getElementById('metrics-visualization').style.display = 'block';
+                    document.getElementById('metrics-insights').style.display = 'block';
+
+                    // Display default view
+                    displayVisualization('leaders');
+                    generateInsights();
+                } else {
+                    alert('Failed to load metrics data');
+                }
+            } catch (error) {
+                alert('Error loading metrics');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function displayVisualization(view) {
+            const content = document.getElementById('viz-content');
+
+            switch(view) {
+                case 'leaders':
+                    displayLeaders();
+                    break;
+                case 'distribution':
+                    displayDistribution();
+                    break;
+                case 'comparison':
+                    displayPositionComparison();
+                    break;
+            }
+        }
+
+        function displayLeaders() {
+            const content = document.getElementById('viz-content');
+            const metric = metricDescriptions[currentMetric];
+            const top20 = playersData.slice(0, 20);
+
+            content.innerHTML = `
+                <div class="leaders-grid">
+                    ${top20.map((player, index) => `
+                        <div class="leader-card ${player[currentMetric] >= metric.eliteValue ? 'elite' : player[currentMetric] >= metric.goodValue ? 'good' : ''}">
+                            <div class="rank">#${index + 1}</div>
+                            <div class="leader-info">
+                                <div class="player-name">${player.PLAYER_NAME}</div>
+                                <div class="player-team">${player.TEAM_ABBREVIATION}</div>
+                            </div>
+                            <div class="metric-value">${formatMetricValue(currentMetric, player[currentMetric])}</div>
+                            <div class="supporting-stats">
+                                <span>GP: ${player.GP}</span>
+                                <span>MIN: ${player.MIN.toFixed(1)}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function displayDistribution() {
+            const content = document.getElementById('viz-content');
+            const values = playersData.map(p => p[currentMetric]);
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const range = max - min;
+            const buckets = 10;
+            const bucketSize = range / buckets;
+
+            // Create histogram data
+            const histogram = Array(buckets).fill(0);
+            values.forEach(val => {
+                const bucket = Math.min(Math.floor((val - min) / bucketSize), buckets - 1);
+                histogram[bucket]++;
+            });
+
+            const maxCount = Math.max(...histogram);
+
+            content.innerHTML = `
+                <div class="distribution-chart">
+                    <h4>Player Distribution by ${metricDescriptions[currentMetric].name}</h4>
+                    <div class="histogram">
+                        ${histogram.map((count, i) => `
+                            <div class="hist-bar-container">
+                                <div class="hist-count">${count}</div>
+                                <div class="hist-bar" style="height: ${(count / maxCount) * 200}px"></div>
+                                <div class="hist-label">${(min + i * bucketSize).toFixed(0)}-${(min + (i + 1) * bucketSize).toFixed(0)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="distribution-stats">
+                        <div class="dist-stat">
+                            <span>Average:</span>
+                            <strong>${(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)}</strong>
+                        </div>
+                        <div class="dist-stat">
+                            <span>Top 10%:</span>
+                            <strong>≥ ${values.sort((a, b) => b - a)[Math.floor(values.length * 0.1)].toFixed(1)}</strong>
+                        </div>
+                        <div class="dist-stat">
+                            <span>Elite (Top 5%):</span>
+                            <strong>≥ ${values[Math.floor(values.length * 0.05)].toFixed(1)}</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayPositionComparison() {
+            const content = document.getElementById('viz-content');
+
+            // Group by position
+            const positions = { 'G': [], 'F': [], 'C': [] };
+            playersData.forEach(player => {
+                if (positions[player.POSITION]) {
+                    positions[player.POSITION].push(player[currentMetric]);
+                }
+            });
+
+            content.innerHTML = `
+                <div class="position-comparison">
+                    <h4>Average ${metricDescriptions[currentMetric].name} by Position</h4>
+                    <div class="position-cards">
+                        ${Object.entries(positions).map(([pos, values]) => {
+                            const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+                            const top = values.length > 0 ? Math.max(...values) : 0;
+                            return `
+                                <div class="position-card">
+                                    <h5>${pos === 'G' ? 'Guards' : pos === 'F' ? 'Forwards' : 'Centers'}</h5>
+                                    <div class="pos-avg">${avg.toFixed(1)}</div>
+                                    <div class="pos-label">Average</div>
+                                    <div class="pos-stats">
+                                        <span>Top: ${top.toFixed(1)}</span>
+                                        <span>Count: ${values.length}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function generateInsights() {
+            const container = document.getElementById('insights-grid');
+            const metric = metricDescriptions[currentMetric];
+            const values = playersData.map(p => p[currentMetric]);
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            const elitePlayers = playersData.filter(p => p[currentMetric] >= metric.eliteValue).length;
+
+            container.innerHTML = `
+                <div class="insight-card">
+                    <div class="insight-icon">📊</div>
+                    <div class="insight-text">
+                        <strong>${elitePlayers}</strong> players (${((elitePlayers / playersData.length) * 100).toFixed(1)}%)
+                        have elite ${metric.name} values (≥${metric.eliteValue})
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="insight-icon">🎯</div>
+                    <div class="insight-text">
+                        League average ${metric.name} is <strong>${avg.toFixed(1)}</strong>
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="insight-icon">🏆</div>
+                    <div class="insight-text">
+                        ${playersData[0].PLAYER_NAME} leads the league with
+                        <strong>${formatMetricValue(currentMetric, playersData[0][currentMetric])}</strong>
+                    </div>
+                </div>
+            `;
+        }
+
+        function formatMetricValue(metric, value) {
+            if (metric.includes('PCT')) {
+                return value.toFixed(1) + '%';
+            }
+            return value.toFixed(1);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+        }
+
+        function hideAllSections() {
+            document.getElementById('metrics-visualization').style.display = 'none';
+            document.getElementById('metrics-insights').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

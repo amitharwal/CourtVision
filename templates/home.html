@@ -9,42 +9,60 @@
 <body>
   <div class="container">
     <header>
-      <div class="logo">Court Vision</div>
+      <div class="logo">Court Vision 🏀</div>
       <nav>
-        <a href="#">Home</a>
-        <a href="#">Dashboard</a>
-        <a href="#">Players</a>
-        <a href="#">Teams</a>
-        <a href="#">API Docs</a>
+        <a href="/" class="active">Home</a>
+        <a href="/compare">Compare</a>
+        <a href="/players">Players</a>
+        <a href="/team-trends">Teams</a>
+        <a href="/shot-charts">Shot Charts</a>
       </nav>
     </header>
 
     <section class="hero">
       <h2>Court Vision: NBA Analytics in Your Hands</h2>
       <p>Connect to the NBA API and explore shot charts, player metrics, and team trends—all in one place.</p>
-      <button id="load-data">Load Data</button>
+      <button id="load-data">Load Top Scorers</button>
     </section>
 
     <section class="visualization">
-      <h3>Sample Visualization</h3>
-      <div id="chart-container"></div>
+      <h3>Top NBA Scorers</h3>
+      <div id="chart-container">
+        <p id="loading-message" style="text-align: center; padding: 20px;">Click "Load Top Scorers" to fetch data!</p>
+        <div id="scorers-list" style="display: none;"></div>
+      </div>
     </section>
 
     <section class="features">
       <div class="feature-card">
         <h3>Interactive Shot Charts</h3>
         <p>Visualize player shot distribution with dynamic filters for season, team, and player.</p>
-        <button>View Chart</button>
+        <a href="/shot-charts" class="feature-btn">View Charts</a>
       </div>
       <div class="feature-card">
         <h3>Advanced Metrics</h3>
         <p>Dive into PER, TS%, and other advanced stats across seasons.</p>
-        <button>Explore Metrics</button>
+        <a href="/advanced-metrics" class="feature-btn">Explore Metrics</a>
       </div>
       <div class="feature-card">
         <h3>Team Trends</h3>
         <p>Analyze team performance, win-loss trends, and efficiency ratings.</p>
-        <button>Analyze Teams</button>
+        <a href="/team-trends" class="feature-btn">Analyze Teams</a>
+      </div>
+      <div class="feature-card">
+        <h3>Player Database</h3>
+        <p>Browse all NBA players with advanced filtering and sorting options.</p>
+        <a href="/players" class="feature-btn">View Players</a>
+      </div>
+      <div class="feature-card">
+        <h3>Compare Players</h3>
+        <p>Select up to 4 players to compare their stats side-by-side.</p>
+        <a href="/compare" class="feature-btn">Compare Now</a>
+      </div>
+      <div class="feature-card">
+        <h3>Export Data</h3>
+        <p>Download player and team data in CSV format for your own analysis.</p>
+        <a href="/players" class="feature-btn">Export Data</a>
       </div>
     </section>
 
@@ -52,5 +70,90 @@
       © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
     </footer>
   </div>
+
+  <style>
+    .feature-btn {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: var(--accent);
+      color: var(--secondary);
+      border: 2px solid var(--primary);
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+      text-align: center;
+    }
+
+    .feature-btn:hover {
+      box-shadow: 4px 4px 0px var(--primary);
+      transform: translate(-2px, -2px);
+    }
+
+    nav a.active {
+      background-color: var(--accent);
+      color: var(--secondary);
+    }
+  </style>
+
+  <script>
+    // Load top scorers when button is clicked
+    document.getElementById('load-data').addEventListener('click', async function() {
+      // Show loading message
+      document.getElementById('loading-message').textContent = 'Loading data...';
+      document.getElementById('loading-message').style.display = 'block';
+      document.getElementById('scorers-list').style.display = 'none';
+
+      try {
+        // Fetch data from the players API with sort by points
+        const response = await fetch('/api/players?sort_by=PTS&season=2023-24');
+        const data = await response.json();
+
+        if (data.success) {
+          // Hide loading message
+          document.getElementById('loading-message').style.display = 'none';
+          document.getElementById('scorers-list').style.display = 'block';
+
+          // Get top 10 scorers
+          const top10 = data.data.slice(0, 10);
+
+          // Create HTML table
+          let html = '<table style="width: 100%; border-collapse: collapse;">';
+          html += '<tr style="border-bottom: 2px solid black;">';
+          html += '<th style="padding: 10px; text-align: left;">Rank</th>';
+          html += '<th style="padding: 10px; text-align: left;">Player</th>';
+          html += '<th style="padding: 10px; text-align: left;">Team</th>';
+          html += '<th style="padding: 10px; text-align: left;">PPG</th>';
+          html += '<th style="padding: 10px; text-align: left;">FG%</th>';
+          html += '<th style="padding: 10px; text-align: left;">3P%</th>';
+          html += '</tr>';
+
+          top10.forEach((player, index) => {
+            html += `<tr style="border-bottom: 1px solid #ccc;">
+                      <td style="padding: 10px; font-weight: bold;">${index + 1}</td>
+                      <td style="padding: 10px;">
+                        <a href="/player/${player.PLAYER_ID}" style="color: #000; font-weight: bold;">
+                          ${player.PLAYER_NAME}
+                        </a>
+                      </td>
+                      <td style="padding: 10px;">${player.TEAM_ABBREVIATION}</td>
+                      <td style="padding: 10px; font-weight: bold; color: #FF5E5B;">${player.PTS}</td>
+                      <td style="padding: 10px;">${player.FG_PCT}%</td>
+                      <td style="padding: 10px;">${player.FG3_PCT}%</td>
+                    </tr>`;
+          });
+
+          html += '</table>';
+
+          document.getElementById('scorers-list').innerHTML = html;
+        } else {
+          document.getElementById('loading-message').textContent = 'Error loading data: ' + data.error;
+        }
+      } catch (error) {
+        document.getElementById('loading-message').textContent = 'Error: Could not connect to server';
+      }
+    });
+  </script>
 </body>
 </html>

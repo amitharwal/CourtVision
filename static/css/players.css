@@ -1,0 +1,586 @@
+:root {
+  --primary: #000000;
+  --secondary: #FFFFFF;
+  --accent: #FF5E5B;
+  --success: #4CAF50;
+  --warning: #FFC107;
+  --muted: #666666;
+  --light-gray: #f5f5f5;
+  --shadow: 6px 6px 0px var(--primary);
+  --shadow-hover: 8px 8px 0px var(--primary);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Courier New', monospace;
+}
+
+body {
+  background-color: var(--light-gray);
+  color: var(--primary);
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.container {
+  width: 100%;
+  max-width: 1400px;
+}
+
+/* Header */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 2px solid var(--primary);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 30px;
+  background-color: var(--secondary);
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+nav {
+  display: flex;
+  gap: 10px;
+}
+
+nav a {
+  text-decoration: none;
+  color: var(--primary);
+  font-weight: bold;
+  border: 2px solid var(--primary);
+  padding: 8px 16px;
+  transition: all 0.3s;
+  background-color: var(--secondary);
+}
+
+nav a:hover, nav a.active {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+  background-color: var(--accent);
+  color: var(--secondary);
+}
+
+/* Filters Section */
+.filters-section {
+  border: 2px solid var(--primary);
+  padding: 25px;
+  box-shadow: var(--shadow);
+  margin-bottom: 30px;
+  background-color: var(--secondary);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.section-header h2 {
+  font-size: 28px;
+}
+
+.export-btn {
+  padding: 10px 20px;
+  background-color: var(--success);
+  color: var(--secondary);
+  border: 2px solid var(--primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.export-btn:hover {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+}
+
+/* Search Bar */
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 12px;
+  border: 2px solid var(--primary);
+  font-size: 16px;
+  font-family: inherit;
+}
+
+.search-bar button {
+  padding: 12px 30px;
+  background-color: var(--primary);
+  color: var(--secondary);
+  border: 2px solid var(--primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.search-bar button:hover {
+  background-color: var(--secondary);
+  color: var(--primary);
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.filter-group label {
+  font-weight: bold;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.filter-group select {
+  padding: 10px;
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.filter-group select:hover {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-1px, -1px);
+}
+
+.filter-group select:focus {
+  outline: none;
+  box-shadow: 3px 3px 0px var(--primary);
+}
+
+.apply-btn, .clear-btn {
+  padding: 10px 25px;
+  border: 2px solid var(--primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 14px;
+}
+
+.apply-btn {
+  background-color: var(--accent);
+  color: var(--secondary);
+}
+
+.clear-btn {
+  background-color: var(--secondary);
+  color: var(--primary);
+}
+
+.apply-btn:hover, .clear-btn:hover {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+}
+
+/* Loading State */
+.loading {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  gap: 20px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--light-gray);
+  border-top: 4px solid var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error {
+  background-color: #ffebee;
+  color: #d32f2f;
+  padding: 15px;
+  border: 2px solid #d32f2f;
+  margin-bottom: 20px;
+  font-weight: bold;
+}
+
+/* Player Count and View Toggle */
+.player-count {
+  font-size: 16px;
+  color: var(--muted);
+  margin-bottom: 15px;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.view-btn {
+  padding: 8px 20px;
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.view-btn.active {
+  background-color: var(--primary);
+  color: var(--secondary);
+}
+
+.view-btn:hover {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+}
+
+/* Players Grid View */
+.players-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.player-card {
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow);
+  transition: all 0.3s;
+  overflow: hidden;
+}
+
+.player-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 15px;
+  background-color: var(--light-gray);
+  border-bottom: 2px solid var(--primary);
+}
+
+.player-rank {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.player-position {
+  background-color: var(--primary);
+  color: var(--secondary);
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.player-avatar {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.avatar-placeholder {
+  width: 80px;
+  height: 80px;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  background-color: var(--accent);
+  color: var(--secondary);
+}
+
+.player-info {
+  text-align: center;
+  padding: 0 20px;
+  margin-bottom: 15px;
+}
+
+.player-info h3 {
+  font-size: 18px;
+  margin-bottom: 5px;
+}
+
+.player-info .team {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.player-stats {
+  padding: 0 20px 20px;
+}
+
+.main-stats {
+  display: flex;
+  justify-content: space-around;
+  padding: 15px 0;
+  border-top: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 15px;
+}
+
+.main-stats .stat {
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 5px;
+}
+
+.shooting-stats {
+  margin-bottom: 15px;
+}
+
+.shooting-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.bar-label {
+  font-size: 12px;
+  font-weight: bold;
+  width: 35px;
+}
+
+.bar-bg {
+  flex: 1;
+  height: 16px;
+  background-color: var(--light-gray);
+  border: 1px solid var(--primary);
+  position: relative;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background-color: var(--accent);
+  transition: width 0.5s ease;
+}
+
+.bar-value {
+  font-size: 12px;
+  font-weight: bold;
+  width: 45px;
+  text-align: right;
+}
+
+.advanced-stats {
+  display: flex;
+  justify-content: space-around;
+  font-size: 12px;
+  padding: 10px 0;
+  background-color: var(--light-gray);
+  margin: 0 -20px -20px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.advanced-stats span {
+  font-weight: bold;
+}
+
+.card-actions {
+  display: flex;
+  border-top: 2px solid var(--primary);
+}
+
+.detail-btn, .compare-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-decoration: none;
+  text-align: center;
+  font-family: inherit;
+}
+
+.detail-btn {
+  background-color: var(--primary);
+  color: var(--secondary);
+  border-right: 1px solid var(--secondary);
+}
+
+.compare-btn {
+  background-color: var(--secondary);
+  color: var(--primary);
+  border-left: 1px solid var(--primary);
+}
+
+.detail-btn:hover {
+  background-color: var(--accent);
+}
+
+.compare-btn:hover {
+  background-color: var(--light-gray);
+}
+
+/* Table View */
+.players-table {
+  overflow-x: auto;
+}
+
+.players-table table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow);
+}
+
+.players-table th {
+  background-color: var(--primary);
+  color: var(--secondary);
+  padding: 12px;
+  text-align: left;
+  font-weight: bold;
+  position: sticky;
+  top: 0;
+}
+
+.players-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.players-table tr:hover {
+  background-color: var(--light-gray);
+}
+
+.player-name-cell a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.player-name-cell a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.players-table .highlight {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.small-btn {
+  padding: 5px 15px;
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 12px;
+}
+
+.small-btn:hover {
+  background-color: var(--primary);
+  color: var(--secondary);
+}
+
+/* No Results */
+.no-results {
+  text-align: center;
+  padding: 60px;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  font-size: 14px;
+  color: var(--primary);
+  margin-top: 60px;
+}
+
+footer a {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    nav {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .filters {
+        flex-direction: column;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .players-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .players-table {
+        font-size: 12px;
+    }
+
+    .players-table th, .players-table td {
+        padding: 8px;
+    }
+}

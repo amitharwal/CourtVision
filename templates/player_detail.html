@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Details - Court Vision</title>
+    <link rel="stylesheet" href="/static/css/player_detail.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">Court Vision</div>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/compare">Compare</a>
+                <a href="/players">Players</a>
+                <a href="/team-trends">Teams</a>
+                <a href="/shot-charts">Shot Charts</a>
+            </nav>
+        </header>
+
+        <div class="back-link">
+            <a href="/players">← Back to Players</a>
+        </div>
+
+        <section id="player-header" class="player-header">
+            <div class="loading">Loading player data...</div>
+        </section>
+
+        <section class="stats-tabs">
+            <button class="tab-btn active" data-tab="current">Current Season</button>
+            <button class="tab-btn" data-tab="career">Career Stats</button>
+            <button class="tab-btn" data-tab="charts">Shot Chart</button>
+        </section>
+
+        <section id="stats-content" class="stats-content">
+            <div id="current-tab" class="tab-content active">
+                <div class="loading">Loading stats...</div>
+            </div>
+            <div id="career-tab" class="tab-content">
+                <div class="loading">Loading career stats...</div>
+            </div>
+            <div id="charts-tab" class="tab-content">
+                <div class="shot-chart-container">
+                    <div class="loading">Loading shot chart...</div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+        </footer>
+    </div>
+
+    <script>
+        const playerId = {{ player_id }};
+        let playerData = null;
+        let shotData = null;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPlayerData();
+            setupTabs();
+        });
+
+        function setupTabs() {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Update active button
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // Update active content
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    document.getElementById(this.dataset.tab + '-tab').classList.add('active');
+
+                    // Load shot chart if needed
+                    if (this.dataset.tab === 'charts' && !shotData) {
+                        loadShotChart();
+                    }
+                });
+            });
+        }
+
+        async function loadPlayerData() {
+            try {
+                const response = await fetch(`/api/player/${playerId}?season=2023-24`);
+                const data = await response.json();
+
+                if (data.success) {
+                    playerData = data;
+                    displayPlayerHeader(data.player_info);
+                    displayCurrentStats(data.season_stats);
+                    displayCareerStats(data.season_stats);
+                } else {
+                    showError('Failed to load player data');
+                }
+            } catch (error) {
+                showError('Network error');
+            }
+        }
+
+        function displayPlayerHeader(info) {
+            const header = document.getElementById('player-header');
+            header.innerHTML = `
+                <div class="player-info-main">
+                    <div class="player-avatar-large">
+                        ${info.PLAYER_NAME ? info.PLAYER_NAME.split(' ').map(n => n[0]).join('') : 'NA'}
+                    </div>
+                    <div class="player-details">
+                        <h1>${info.PLAYER_NAME || 'Unknown Player'}</h1>
+                        <p class="player-meta">${info.TEAM_CITY || ''} ${info.TEAM_NAME || ''} • #${info.JERSEY || 'N/A'}</p>
+                        <div class="player-physical">
+                            <span>Height: ${info.HEIGHT || 'N/A'}</span>
+                            <span>Weight: ${info.WEIGHT || 'N/A'} lbs</span>
+                            <span>Age: ${info.AGE || 'N/A'}</span>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="addToCompare(${playerId}, '${info.PLAYER_NAME}')" class="compare-large-btn">
+                    Add to Compare
+                </button>
+            `;
+        }
+
+        function displayCurrentStats(seasons) {
+            const currentSeason = seasons.find(s => s.SEASON_ID === '2023-24') || seasons[0];
+            const content = document.getElementById('current-tab');
+
+            if (!currentSeason) {
+                content.innerHTML = '<p class="no-data">No current season data available</p>';
+                return;
+            }
+
+            content.innerHTML = `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Scoring</h3>
+                        <div class="stat-item">
+                            <span class="stat-name">PPG</span>
+                            <span class="stat-value">${(currentSeason.PTS || 0).toFixed(1)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">FG%</span>
+                            <span class="stat-value">${(currentSeason.FG_PCT * 100 || 0).toFixed(1)}%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">3P%</span>
+                            <span class="stat-value">${(currentSeason.FG3_PCT * 100 || 0).toFixed(1)}%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">FT%</span>
+                            <span class="stat-value">${(currentSeason.FT_PCT * 100 || 0).toFixed(1)}%</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <h3>Playmaking</h3>
+                        <div class="stat-item">
+                            <span class="stat-name">APG</span>
+                            <span class="stat-value">${(currentSeason.AST || 0).toFixed(1)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">A/TO</span>
+                            <span class="stat-value">${currentSeason.TOV ? (currentSeason.AST / currentSeason.TOV).toFixed(2) : 'N/A'}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">USG%</span>
+                            <span class="stat-value">${(currentSeason.USG_PCT * 100 || 0).toFixed(1)}%</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <h3>Rebounding</h3>
+                        <div class="stat-item">
+                            <span class="stat-name">RPG</span>
+                            <span class="stat-value">${(currentSeason.REB || 0).toFixed(1)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">ORPG</span>
+                            <span class="stat-value">${(currentSeason.OREB || 0).toFixed(1)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">DRPG</span>
+                            <span class="stat-value">${(currentSeason.DREB || 0).toFixed(1)}</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <h3>Defense</h3>
+                        <div class="stat-item">
+                            <span class="stat-name">SPG</span>
+                            <span class="stat-value">${(currentSeason.STL || 0).toFixed(1)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">BPG</span>
+                            <span class="stat-value">${(currentSeason.BLK || 0).toFixed(1)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-name">PF</span>
+                            <span class="stat-value">${(currentSeason.PF || 0).toFixed(1)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayCareerStats(seasons) {
+            const content = document.getElementById('career-tab');
+
+            if (!seasons || seasons.length === 0) {
+                content.innerHTML = '<p class="no-data">No career data available</p>';
+                return;
+            }
+
+            let tableHtml = `
+                <div class="career-stats-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Season</th>
+                                <th>Team</th>
+                                <th>GP</th>
+                                <th>MIN</th>
+                                <th>PTS</th>
+                                <th>REB</th>
+                                <th>AST</th>
+                                <th>FG%</th>
+                                <th>3P%</th>
+                                <th>FT%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            seasons.forEach(season => {
+                tableHtml += `
+                    <tr>
+                        <td>${season.SEASON_ID}</td>
+                        <td>${season.TEAM_ABBREVIATION || 'N/A'}</td>
+                        <td>${season.GP || 0}</td>
+                        <td>${(season.MIN || 0).toFixed(1)}</td>
+                        <td>${(season.PTS || 0).toFixed(1)}</td>
+                        <td>${(season.REB || 0).toFixed(1)}</td>
+                        <td>${(season.AST || 0).toFixed(1)}</td>
+                        <td>${((season.FG_PCT || 0) * 100).toFixed(1)}%</td>
+                        <td>${((season.FG3_PCT || 0) * 100).toFixed(1)}%</td>
+                        <td>${((season.FT_PCT || 0) * 100).toFixed(1)}%</td>
+                    </tr>
+                `;
+            });
+
+            tableHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            content.innerHTML = tableHtml;
+        }
+
+        async function loadShotChart() {
+            const container = document.getElementById('charts-tab');
+
+            try {
+                const response = await fetch(`/api/shot-chart/${playerId}?season=2023-24`);
+                const data = await response.json();
+
+                if (data.success) {
+                    shotData = data.shots;
+                    displayShotChart(data.shots);
+                } else {
+                    container.innerHTML = '<p class="no-data">No shot chart data available</p>';
+                }
+            } catch (error) {
+                container.innerHTML = '<p class="error">Failed to load shot chart</p>';
+            }
+        }
+
+        function displayShotChart(shots) {
+            const container = document.getElementById('charts-tab');
+
+            // Create shot chart visualization
+            const courtWidth = 500;
+            const courtHeight = 470;
+
+            let madeShots = shots.filter(s => s.SHOT_MADE_FLAG === 1);
+            let missedShots = shots.filter(s => s.SHOT_MADE_FLAG === 0);
+
+            container.innerHTML = `
+                <div class="shot-chart-header">
+                    <h3>Shot Chart - 2023-24 Season</h3>
+                    <div class="shot-stats">
+                        <span class="made">Made: ${madeShots.length}</span>
+                        <span class="missed">Missed: ${missedShots.length}</span>
+                        <span class="total">FG%: ${shots.length > 0 ? ((madeShots.length / shots.length) * 100).toFixed(1) : 0}%</span>
+                    </div>
+                </div>
+                <div class="court-container">
+                    <svg width="${courtWidth}" height="${courtHeight}" class="basketball-court">
+                        <!-- Court outline -->
+                        <rect x="0" y="0" width="${courtWidth}" height="${courtHeight}" fill="#f4e4c1" stroke="#000" stroke-width="2"/>
+
+                        <!-- Paint -->
+                        <rect x="${courtWidth/2 - 80}" y="0" width="160" height="190" fill="none" stroke="#000" stroke-width="2"/>
+
+                        <!-- Free throw circle -->
+                        <circle cx="${courtWidth/2}" cy="190" r="60" fill="none" stroke="#000" stroke-width="2"/>
+
+                        <!-- Basket -->
+                        <circle cx="${courtWidth/2}" cy="63" r="7.5" fill="none" stroke="#000" stroke-width="2"/>
+
+                        <!-- Three point line -->
+                        <path d="M 30 0 L 30 140 A 237 237 0 0 0 470 140 L 470 0"
+                              fill="none" stroke="#000" stroke-width="2"/>
+
+                        <!-- Plot missed shots -->
+                        ${missedShots.map(shot => `
+                            <circle cx="${courtWidth/2 + shot.LOC_X/10}"
+                                    cy="${shot.LOC_Y/10}"
+                                    r="4"
+                                    fill="none"
+                                    stroke="#FF5E5B"
+                                    stroke-width="2"
+                                    opacity="0.6"/>
+                        `).join('')}
+
+                        <!-- Plot made shots -->
+                        ${madeShots.map(shot => `
+                            <circle cx="${courtWidth/2 + shot.LOC_X/10}"
+                                    cy="${shot.LOC_Y/10}"
+                                    r="5"
+                                    fill="#4CAF50"
+                                    stroke="#2E7D32"
+                                    stroke-width="1"
+                                    opacity="0.8"/>
+                        `).join('')}
+                    </svg>
+                </div>
+                <div class="shot-zones">
+                    <h4>Shot Distribution by Zone</h4>
+                    <div class="zones-grid">
+                        ${getZoneStats(shots)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function getZoneStats(shots) {
+            const zones = {
+                'Restricted Area': shots.filter(s => s.SHOT_ZONE_BASIC === 'Restricted Area'),
+                'In The Paint (Non-RA)': shots.filter(s => s.SHOT_ZONE_BASIC === 'In The Paint (Non-RA)'),
+                'Mid-Range': shots.filter(s => s.SHOT_ZONE_BASIC === 'Mid-Range'),
+                'Above the Break 3': shots.filter(s => s.SHOT_ZONE_BASIC === 'Above the Break 3'),
+                'Corner 3': shots.filter(s => s.SHOT_ZONE_BASIC === 'Left Corner 3' || s.SHOT_ZONE_BASIC === 'Right Corner 3')
+            };
+
+            let html = '';
+            for (const [zone, zoneShots] of Object.entries(zones)) {
+                if (zoneShots.length > 0) {
+                    const made = zoneShots.filter(s => s.SHOT_MADE_FLAG === 1).length;
+                    const pct = ((made / zoneShots.length) * 100).toFixed(1);
+                    html += `
+                        <div class="zone-stat">
+                            <div class="zone-name">${zone}</div>
+                            <div class="zone-numbers">
+                                <span>${made}/${zoneShots.length}</span>
+                                <span class="zone-pct">${pct}%</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            return html;
+        }
+
+        function showError(message) {
+            alert(message);
+        }
+
+        function addToCompare(playerId, playerName) {
+            let compareList = JSON.parse(localStorage.getItem('compareList') || '[]');
+
+            if (compareList.find(p => p.id === playerId)) {
+                alert(`${playerName} is already in your comparison list`);
+                return;
+            }
+
+            if (compareList.length >= 4) {
+                alert('You can compare up to 4 players at a time');
+                return;
+            }
+
+            compareList.push({ id: playerId, name: playerName });
+            localStorage.setItem('compareList', JSON.stringify(compareList));
+
+            alert(`${playerName} added to comparison. ${compareList.length}/4 players selected.`);
+        }
+    </script>
+</body>
+</html>

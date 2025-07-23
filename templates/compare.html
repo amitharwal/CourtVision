@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compare Players - Court Vision</title>
+    <link rel="stylesheet" href="/static/css/compare.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">Court Vision</div>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/compare" class="active">Compare</a>
+                <a href="/players">Players</a>
+                <a href="/team-trends">Teams</a>
+                <a href="/shot-charts">Shot Charts</a>
+            </nav>
+        </header>
+
+        <section class="compare-header">
+            <h2>Player Comparison Tool</h2>
+            <p>Select up to 4 players to compare their stats side-by-side</p>
+        </section>
+
+        <section class="player-selection">
+            <div class="selected-players" id="selected-players">
+                <!-- Selected players will appear here -->
+            </div>
+
+            <div class="add-player-section">
+                <input type="text" id="player-search" placeholder="Search for a player...">
+                <div id="search-results" class="search-results"></div>
+            </div>
+        </section>
+
+        <section id="comparison-section" class="comparison-section" style="display: none;">
+            <div class="season-selector">
+                <label for="season-select">Season:</label>
+                <select id="season-select">
+                    <option value="2023-24">2023-24</option>
+                    <option value="2022-23">2022-23</option>
+                    <option value="2021-22">2021-22</option>
+                    <option value="2020-21">2020-21</option>
+                    <option value="2019-20">2019-20</option>
+                </select>
+                <button id="refresh-comparison" class="refresh-btn">Refresh Stats</button>
+            </div>
+
+            <div id="comparison-content" class="comparison-content">
+                <!-- Comparison data will appear here -->
+            </div>
+        </section>
+
+        <footer>
+            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+        </footer>
+    </div>
+
+    <script>
+        let selectedPlayers = [];
+        let playerStats = {};
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSavedPlayers();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('player-search').addEventListener('input', debounce(searchPlayers, 300));
+            document.getElementById('refresh-comparison').addEventListener('click', loadComparison);
+            document.getElementById('season-select').addEventListener('change', loadComparison);
+        }
+
+        function loadSavedPlayers() {
+            const saved = JSON.parse(localStorage.getItem('compareList') || '[]');
+            saved.forEach(player => {
+                if (selectedPlayers.length < 4) {
+                    selectedPlayers.push(player);
+                }
+            });
+            updateSelectedDisplay();
+            if (selectedPlayers.length > 0) {
+                loadComparison();
+            }
+        }
+
+        async function searchPlayers() {
+            const query = document.getElementById('player-search').value;
+            const resultsDiv = document.getElementById('search-results');
+
+            if (query.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/search-players?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    displaySearchResults(data.players);
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+            }
+        }
+
+        function displaySearchResults(players) {
+            const resultsDiv = document.getElementById('search-results');
+
+            if (players.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-results">No players found</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+
+            resultsDiv.innerHTML = players.map(player => `
+                <div class="search-result" onclick="addPlayer(${player.id}, '${player.name}')">
+                    ${player.name} ${player.is_active ? '✓' : '(Retired)'}
+                </div>
+            `).join('');
+            resultsDiv.style.display = 'block';
+        }
+
+        function addPlayer(id, name) {
+            if (selectedPlayers.find(p => p.id === id)) {
+                alert('Player already selected');
+                return;
+            }
+
+            if (selectedPlayers.length >= 4) {
+                alert('Maximum 4 players allowed');
+                return;
+            }
+
+            selectedPlayers.push({ id, name });
+            updateSelectedDisplay();
+            saveToLocalStorage();
+
+            // Clear search
+            document.getElementById('player-search').value = '';
+            document.getElementById('search-results').style.display = 'none';
+
+            // Load comparison
+            loadComparison();
+        }
+
+        function removePlayer(id) {
+            selectedPlayers = selectedPlayers.filter(p => p.id !== id);
+            updateSelectedDisplay();
+            saveToLocalStorage();
+
+            if (selectedPlayers.length === 0) {
+                document.getElementById('comparison-section').style.display = 'none';
+            } else {
+                loadComparison();
+            }
+        }
+
+        function updateSelectedDisplay() {
+            const container = document.getElementById('selected-players');
+
+            if (selectedPlayers.length === 0) {
+                container.innerHTML = '<div class="empty-state">No players selected. Search and add players above.</div>';
+                return;
+            }
+
+            container.innerHTML = selectedPlayers.map((player, index) => `
+                <div class="selected-player">
+                    <span class="player-number">${index + 1}</span>
+                    <span class="player-name">${player.name}</span>
+                    <button class="remove-btn" onclick="removePlayer(${player.id})">×</button>
+                </div>
+            `).join('') + (selectedPlayers.length < 4 ?
+                '<div class="add-slot">+ Add Player</div>' : '');
+        }
+
+        async function loadComparison() {
+            if (selectedPlayers.length === 0) return;
+
+            document.getElementById('comparison-section').style.display = 'block';
+            const content = document.getElementById('comparison-content');
+            content.innerHTML = '<div class="loading">Loading player stats...</div>';
+
+            const season = document.getElementById('season-select').value;
+
+            try {
+                // Load stats for each player
+                const promises = selectedPlayers.map(player =>
+                    fetch(`/api/players?season=${season}&search=${player.name}`)
+                );
+
+                const responses = await Promise.all(promises);
+                const data = await Promise.all(responses.map(r => r.json()));
+
+                // Extract player stats
+                playerStats = {};
+                selectedPlayers.forEach((player, index) => {
+                    const playerData = data[index].data.find(p => p.PLAYER_ID === player.id) || data[index].data[0];
+                    if (playerData) {
+                        playerStats[player.id] = playerData;
+                    }
+                });
+
+                displayComparison();
+            } catch (error) {
+                content.innerHTML = '<div class="error">Failed to load player stats</div>';
+            }
+        }
+
+        function displayComparison() {
+            const content = document.getElementById('comparison-content');
+
+            const categories = [
+                { name: 'Basic Stats', stats: ['GP', 'MIN', 'PTS', 'REB', 'AST'] },
+                { name: 'Shooting', stats: ['FG_PCT', 'FG3_PCT', 'FT_PCT', 'TS_PCT'] },
+                { name: 'Defense', stats: ['STL', 'BLK', 'PF'] },
+                { name: 'Advanced', stats: ['EFF'] }
+            ];
+
+            let html = '<div class="comparison-grid">';
+
+            // Header row
+            html += '<div class="comparison-header-row">';
+            html += '<div class="stat-label-cell"></div>';
+            selectedPlayers.forEach(player => {
+                const stats = playerStats[player.id];
+                html += `
+                    <div class="player-header-cell">
+                        <div class="player-name">${player.name}</div>
+                        <div class="player-team">${stats ? stats.TEAM_ABBREVIATION : 'N/A'}</div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            // Stats rows
+            categories.forEach(category => {
+                html += `<div class="category-header">${category.name}</div>`;
+
+                category.stats.forEach(stat => {
+                    const values = selectedPlayers.map(p => playerStats[p.id] ? playerStats[p.id][stat] : 0);
+                    const maxValue = Math.max(...values);
+
+                    html += '<div class="stat-row">';
+                    html += `<div class="stat-label-cell">${formatStatName(stat)}</div>`;
+
+                    selectedPlayers.forEach(player => {
+                        const stats = playerStats[player.id];
+                        const value = stats ? stats[stat] : 0;
+                        const isMax = value === maxValue && value > 0;
+                        const displayValue = formatStatValue(stat, value);
+
+                        html += `
+                            <div class="stat-value-cell ${isMax ? 'best-value' : ''}">
+                                ${displayValue}
+                                ${stat.includes('PCT') ? createBar(value) : ''}
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                });
+            });
+
+            html += '</div>';
+            content.innerHTML = html;
+        }
+
+        function formatStatName(stat) {
+            const names = {
+                'GP': 'Games Played',
+                'MIN': 'Minutes',
+                'PTS': 'Points',
+                'REB': 'Rebounds',
+                'AST': 'Assists',
+                'FG_PCT': 'Field Goal %',
+                'FG3_PCT': '3-Point %',
+                'FT_PCT': 'Free Throw %',
+                'TS_PCT': 'True Shooting %',
+                'STL': 'Steals',
+                'BLK': 'Blocks',
+                'PF': 'Personal Fouls',
+                'EFF': 'Efficiency'
+            };
+            return names[stat] || stat;
+        }
+
+        function formatStatValue(stat, value) {
+            if (stat.includes('PCT')) {
+                return value.toFixed(1) + '%';
+            }
+            return value.toFixed(1);
+        }
+
+        function createBar(value) {
+            return `
+                <div class="stat-bar">
+                    <div class="stat-bar-fill" style="width: ${value}%"></div>
+                </div>
+            `;
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('compareList', JSON.stringify(selectedPlayers));
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+</body>
+</html>

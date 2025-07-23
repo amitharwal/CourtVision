@@ -1,0 +1,438 @@
+:root {
+  --primary: #000000;
+  --secondary: #FFFFFF;
+  --accent: #FF5E5B;
+  --success: #4CAF50;
+  --muted: #666666;
+  --light-gray: #f5f5f5;
+  --shadow: 6px 6px 0px var(--primary);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Courier New', monospace;
+}
+
+body {
+  background-color: var(--light-gray);
+  color: var(--primary);
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+}
+
+/* Header */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 2px solid var(--primary);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 30px;
+  background-color: var(--secondary);
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+nav {
+  display: flex;
+  gap: 10px;
+}
+
+nav a {
+  text-decoration: none;
+  color: var(--primary);
+  font-weight: bold;
+  border: 2px solid var(--primary);
+  padding: 8px 16px;
+  transition: all 0.3s;
+  background-color: var(--secondary);
+}
+
+nav a:hover, nav a.active {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+  background-color: var(--accent);
+  color: var(--secondary);
+}
+
+/* Compare Header */
+.compare-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.compare-header h2 {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.compare-header p {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+/* Player Selection */
+.player-selection {
+  border: 2px solid var(--primary);
+  padding: 30px;
+  box-shadow: var(--shadow);
+  margin-bottom: 30px;
+  background-color: var(--secondary);
+}
+
+.selected-players {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+}
+
+.selected-player {
+  border: 2px solid var(--primary);
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: var(--light-gray);
+  position: relative;
+  transition: all 0.3s;
+}
+
+.selected-player:hover {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-1px, -1px);
+}
+
+.player-number {
+  width: 30px;
+  height: 30px;
+  background-color: var(--accent);
+  color: var(--secondary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.player-name {
+  font-weight: bold;
+  flex: 1;
+}
+
+.remove-btn {
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: bold;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.remove-btn:hover {
+  background-color: var(--accent);
+  color: var(--secondary);
+}
+
+.add-slot {
+  border: 2px dashed var(--primary);
+  padding: 15px 30px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.add-slot:hover {
+  border-style: solid;
+  color: var(--primary);
+  background-color: var(--light-gray);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+/* Add Player Section */
+.add-player-section {
+  position: relative;
+}
+
+#player-search {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid var(--primary);
+  font-size: 16px;
+  font-family: inherit;
+}
+
+#player-search:focus {
+  outline: none;
+  box-shadow: 3px 3px 0px var(--primary);
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--secondary);
+  border: 2px solid var(--primary);
+  border-top: none;
+  max-height: 300px;
+  overflow-y: auto;
+  display: none;
+  z-index: 10;
+  box-shadow: var(--shadow);
+}
+
+.search-result {
+  padding: 12px 15px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--light-gray);
+  transition: background-color 0.2s;
+}
+
+.search-result:hover {
+  background-color: var(--light-gray);
+}
+
+.no-results {
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Comparison Section */
+.comparison-section {
+  border: 2px solid var(--primary);
+  padding: 30px;
+  box-shadow: var(--shadow);
+  background-color: var(--secondary);
+  margin-bottom: 30px;
+}
+
+.season-selector {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--primary);
+}
+
+.season-selector label {
+  font-weight: bold;
+}
+
+.season-selector select {
+  padding: 8px 15px;
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.refresh-btn {
+  padding: 8px 20px;
+  background-color: var(--primary);
+  color: var(--secondary);
+  border: 2px solid var(--primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.refresh-btn:hover {
+  background-color: var(--secondary);
+  color: var(--primary);
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+}
+
+/* Comparison Content */
+.comparison-content {
+  min-height: 300px;
+}
+
+.loading {
+  text-align: center;
+  padding: 60px;
+  color: var(--muted);
+}
+
+.error {
+  text-align: center;
+  padding: 60px;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+/* Comparison Grid */
+.comparison-grid {
+  width: 100%;
+}
+
+.comparison-header-row {
+  display: grid;
+  grid-template-columns: 200px repeat(4, 1fr);
+  border-bottom: 3px solid var(--primary);
+  margin-bottom: 20px;
+}
+
+.stat-label-cell {
+  padding: 15px;
+  font-weight: bold;
+  border-right: 1px solid var(--light-gray);
+}
+
+.player-header-cell {
+  padding: 15px;
+  text-align: center;
+  border-right: 1px solid var(--light-gray);
+}
+
+.player-header-cell:last-child {
+  border-right: none;
+}
+
+.player-header-cell .player-name {
+  font-weight: bold;
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+.player-header-cell .player-team {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.category-header {
+  grid-column: 1 / -1;
+  padding: 15px;
+  background-color: var(--primary);
+  color: var(--secondary);
+  font-weight: bold;
+  text-transform: uppercase;
+  margin: 20px 0 10px;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 200px repeat(4, 1fr);
+  border-bottom: 1px solid var(--light-gray);
+}
+
+.stat-row:hover {
+  background-color: var(--light-gray);
+}
+
+.stat-value-cell {
+  padding: 15px;
+  text-align: center;
+  font-size: 18px;
+  border-right: 1px solid var(--light-gray);
+  position: relative;
+}
+
+.stat-value-cell:last-child {
+  border-right: none;
+}
+
+.best-value {
+  font-weight: bold;
+  color: var(--accent);
+  background-color: #fff5f5;
+}
+
+/* Stat Bar */
+.stat-bar {
+  width: 100%;
+  height: 6px;
+  background-color: var(--light-gray);
+  margin-top: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background-color: var(--accent);
+  transition: width 0.5s ease;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  font-size: 14px;
+  color: var(--primary);
+  margin-top: 60px;
+}
+
+footer a {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .comparison-header-row,
+  .stat-row {
+    grid-template-columns: 150px repeat(4, 1fr);
+  }
+
+  .stat-label-cell {
+    font-size: 14px;
+  }
+
+  .stat-value-cell {
+    font-size: 16px;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  nav {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .comparison-header-row,
+  .stat-row {
+    grid-template-columns: 120px repeat(2, 1fr);
+  }
+
+  .player-header-cell:nth-child(n+4),
+  .stat-value-cell:nth-child(n+4) {
+    display: none;
+  }
+
+  .selected-players {
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA Players - Court Vision</title>
+    <link rel="stylesheet" href="/static/css/players.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">Court Vision</div>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/compare">Compare</a>
+                <a href="/players" class="active">Players</a>
+                <a href="/team-trends">Teams</a>
+                <a href="/shot-charts">Shot Charts</a>
+            </nav>
+        </header>
+
+        <section class="filters-section">
+            <div class="section-header">
+                <h2>NBA Players Database</h2>
+                <button id="export-btn" class="export-btn">Export CSV</button>
+            </div>
+
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="Search players by name...">
+                <button id="search-btn">Search</button>
+            </div>
+
+            <div class="filters">
+                <div class="filter-group">
+                    <label for="season-filter">Season</label>
+                    <select id="season-filter">
+                        <option value="2023-24">2023-24</option>
+                        <option value="2022-23">2022-23</option>
+                        <option value="2021-22">2021-22</option>
+                        <option value="2020-21">2020-21</option>
+                        <option value="2019-20">2019-20</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="team-filter">Team</label>
+                    <select id="team-filter">
+                        <option value="all">All Teams</option>
+                        {% for team in teams %}
+                        <option value="{{ team.abbreviation }}">{{ team.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="position-filter">Position</label>
+                    <select id="position-filter">
+                        <option value="all">All Positions</option>
+                        <option value="G">Guards</option>
+                        <option value="F">Forwards</option>
+                        <option value="C">Centers</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="sort-filter">Sort By</label>
+                    <select id="sort-filter">
+                        <option value="PTS">Points</option>
+                        <option value="REB">Rebounds</option>
+                        <option value="AST">Assists</option>
+                        <option value="STL">Steals</option>
+                        <option value="BLK">Blocks</option>
+                        <option value="FG_PCT">Field Goal %</option>
+                        <option value="FG3_PCT">3-Point %</option>
+                        <option value="TS_PCT">True Shooting %</option>
+                        <option value="EFF">Efficiency</option>
+                        <option value="MIN">Minutes</option>
+                        <option value="GP">Games Played</option>
+                    </select>
+                </div>
+
+                <button id="apply-filters" class="apply-btn">Apply Filters</button>
+                <button id="clear-filters" class="clear-btn">Clear</button>
+            </div>
+        </section>
+
+        <section class="players-section">
+            <div id="loading" class="loading">
+                <div class="loading-spinner"></div>
+                <p>Loading players...</p>
+            </div>
+            <div id="error" class="error" style="display: none;"></div>
+            <div id="player-count" class="player-count"></div>
+
+            <div class="view-toggle">
+                <button class="view-btn active" data-view="grid">Grid View</button>
+                <button class="view-btn" data-view="table">Table View</button>
+            </div>
+
+            <div id="players-container" class="players-grid">
+                <!-- Player cards will be inserted here by JavaScript -->
+            </div>
+        </section>
+
+        <footer>
+            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+        </footer>
+    </div>
+
+    <script>
+        let currentPlayers = [];
+        let currentView = 'grid';
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPlayers();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // Filters
+            document.getElementById('apply-filters').addEventListener('click', loadPlayers);
+            document.getElementById('clear-filters').addEventListener('click', clearFilters);
+            document.getElementById('search-btn').addEventListener('click', loadPlayers);
+            document.getElementById('search-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') loadPlayers();
+            });
+
+            // Export
+            document.getElementById('export-btn').addEventListener('click', exportData);
+
+            // View toggle
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentView = this.dataset.view;
+                    displayPlayers(currentPlayers);
+                });
+            });
+        }
+
+        async function loadPlayers() {
+            // Show loading state
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('players-container').innerHTML = '';
+            document.getElementById('player-count').innerHTML = '';
+
+            // Get filter values
+            const params = new URLSearchParams({
+                season: document.getElementById('season-filter').value,
+                team: document.getElementById('team-filter').value,
+                position: document.getElementById('position-filter').value,
+                sort_by: document.getElementById('sort-filter').value,
+                search: document.getElementById('search-input').value
+            });
+
+            try {
+                const response = await fetch(`/api/players?${params}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    currentPlayers = data.data;
+                    displayPlayers(data.data);
+                    document.getElementById('player-count').innerHTML = `
+                        <strong>${data.count}</strong> players found
+                    `;
+                } else {
+                    showError(data.error || 'Failed to load players');
+                }
+            } catch (error) {
+                showError('Network error: Could not connect to server');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function displayPlayers(players) {
+            const container = document.getElementById('players-container');
+            container.innerHTML = '';
+            container.className = currentView === 'grid' ? 'players-grid' : 'players-table';
+
+            if (players.length === 0) {
+                container.innerHTML = '<p class="no-results">No players found with current filters</p>';
+                return;
+            }
+
+            if (currentView === 'grid') {
+                displayGridView(players);
+            } else {
+                displayTableView(players);
+            }
+        }
+
+        function displayGridView(players) {
+            const container = document.getElementById('players-container');
+
+            players.forEach((player, index) => {
+                const card = document.createElement('div');
+                card.className = 'player-card';
+                card.innerHTML = `
+                    <div class="card-header">
+                        <span class="player-rank">#${index + 1}</span>
+                        <span class="player-position">${player.POSITION}</span>
+                    </div>
+                    <div class="player-avatar">
+                        <div class="avatar-placeholder">${player.PLAYER_NAME.split(' ').map(n => n[0]).join('')}</div>
+                    </div>
+                    <div class="player-info">
+                        <h3>${player.PLAYER_NAME}</h3>
+                        <p class="team">${player.TEAM_ABBREVIATION} • ${player.AGE} years</p>
+                    </div>
+                    <div class="player-stats">
+                        <div class="main-stats">
+                            <div class="stat">
+                                <span class="stat-value">${player.PTS}</span>
+                                <span class="stat-label">PPG</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">${player.REB}</span>
+                                <span class="stat-label">RPG</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">${player.AST}</span>
+                                <span class="stat-label">APG</span>
+                            </div>
+                        </div>
+                        <div class="shooting-stats">
+                            <div class="shooting-bar">
+                                <span class="bar-label">FG%</span>
+                                <div class="bar-bg">
+                                    <div class="bar-fill" style="width: ${player.FG_PCT}%"></div>
+                                </div>
+                                <span class="bar-value">${player.FG_PCT}%</span>
+                            </div>
+                            <div class="shooting-bar">
+                                <span class="bar-label">3P%</span>
+                                <div class="bar-bg">
+                                    <div class="bar-fill" style="width: ${player.FG3_PCT}%"></div>
+                                </div>
+                                <span class="bar-value">${player.FG3_PCT}%</span>
+                            </div>
+                        </div>
+                        <div class="advanced-stats">
+                            <span>TS%: ${player.TS_PCT}%</span>
+                            <span>EFF: ${player.EFF}</span>
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <a href="/player/${player.PLAYER_ID}" class="detail-btn">View Details</a>
+                        <button class="compare-btn" onclick="addToCompare(${player.PLAYER_ID}, '${player.PLAYER_NAME}')">Compare</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function displayTableView(players) {
+            const container = document.getElementById('players-container');
+
+            const table = document.createElement('table');
+            table.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>Pos</th>
+                        <th>Age</th>
+                        <th>GP</th>
+                        <th>MIN</th>
+                        <th>PTS</th>
+                        <th>REB</th>
+                        <th>AST</th>
+                        <th>FG%</th>
+                        <th>3P%</th>
+                        <th>TS%</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${players.map((player, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td class="player-name-cell">
+                                <a href="/player/${player.PLAYER_ID}">${player.PLAYER_NAME}</a>
+                            </td>
+                            <td>${player.TEAM_ABBREVIATION}</td>
+                            <td>${player.POSITION}</td>
+                            <td>${player.AGE}</td>
+                            <td>${player.GP}</td>
+                            <td>${player.MIN}</td>
+                            <td class="highlight">${player.PTS}</td>
+                            <td>${player.REB}</td>
+                            <td>${player.AST}</td>
+                            <td>${player.FG_PCT}%</td>
+                            <td>${player.FG3_PCT}%</td>
+                            <td>${player.TS_PCT}%</td>
+                            <td>
+                                <button class="small-btn" onclick="addToCompare(${player.PLAYER_ID}, '${player.PLAYER_NAME}')">Compare</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            `;
+            container.appendChild(table);
+        }
+
+        function clearFilters() {
+            document.getElementById('season-filter').value = '2023-24';
+            document.getElementById('team-filter').value = 'all';
+            document.getElementById('position-filter').value = 'all';
+            document.getElementById('sort-filter').value = 'PTS';
+            document.getElementById('search-input').value = '';
+            loadPlayers();
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = `Error: ${message}`;
+            errorDiv.style.display = 'block';
+        }
+
+        async function exportData() {
+            const params = new URLSearchParams({
+                season: document.getElementById('season-filter').value,
+                team: document.getElementById('team-filter').value,
+                position: document.getElementById('position-filter').value,
+                sort_by: document.getElementById('sort-filter').value
+            });
+
+            window.location.href = `/api/export/players?${params}`;
+        }
+
+        function addToCompare(playerId, playerName) {
+            // Get existing compare list from localStorage
+            let compareList = JSON.parse(localStorage.getItem('compareList') || '[]');
+
+            // Check if player already in list
+            if (compareList.find(p => p.id === playerId)) {
+                alert(`${playerName} is already in your comparison list`);
+                return;
+            }
+
+            // Add player (max 4)
+            if (compareList.length >= 4) {
+                alert('You can compare up to 4 players at a time');
+                return;
+            }
+
+            compareList.push({ id: playerId, name: playerName });
+            localStorage.setItem('compareList', JSON.stringify(compareList));
+
+            alert(`${playerName} added to comparison. ${compareList.length}/4 players selected.`);
+        }
+    </script>
+</body>
+</html>
