@@ -4,18 +4,18 @@ from nba_api.stats.endpoints import leaguedashplayerstats, shotchartdetail, team
     playerprofilev2, commonplayerinfo, leaguedashteamstats
 from nba_api.stats.static import teams, players
 import pandas as pd
-import json
 from datetime import datetime
+import json
 import io
 import time
 
-# Flask constructor takes the name of current module (__name__) as argument.
+# Initialize Flask app
 app = Flask(__name__)
 
-# Cache for player positions (to avoid multiple API calls)
+# Cache for player positions (optional)
 player_positions_cache = {}
 
-# Add headers to mimic a browser request (NBA API requirement)
+# Headers to mimic a browser request.  The NBA's stats API blocks generic requests.
 HEADERS = {
     'Host': 'stats.nba.com',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:72.0) Gecko/20100101 Firefox/72.0',
@@ -30,66 +30,97 @@ HEADERS = {
     'Cache-Control': 'no-cache'
 }
 
-# Add proxy settings if needed
+# Proxy settings (optional).  Leave empty unless you need to route through a proxy.
 PROXIES = {
-    # Uncomment and modify if you need to use a proxy
     # 'http': 'http://your-proxy:port',
     # 'https': 'http://your-proxy:port',
 }
 
+def get_seasons(start_year: int = 1951):
+    """
+    Generate a list of NBA season strings (e.g. '2023-24') from the most recent
+    completed season down to a starting year.  The list is ordered from newest
+    to oldest.
+
+    The NBA season spans two calendar years.  If it's July or later, the
+    current calendar year marks the start of the new season (e.g. July 2025 is
+    the beginning of the 2025‑26 season).  Before July, we consider the
+    previous year the most recently completed season.
+    """
+    today = datetime.now()
+    current_year = today.year
+    # Determine the start year of the latest season.  NBA seasons usually start in October.
+    if today.month >= 7:
+        latest_start_year = current_year
+    else:
+        latest_start_year = current_year - 1
+
+    seasons = []
+    for year in range(latest_start_year, start_year - 1, -1):
+        next_year_suffix = str(year + 1)[-2:]
+        seasons.append(f"{year}-{next_year_suffix}")
+    return seasons
 
 @app.route('/')
 def home():
-    return render_template('home.html')
-
+    """
+    Home page displaying quick stats and league leaders.
+    Pass the list of seasons so the template can display the current season dynamically.
+    """
+    return render_template('home.html', seasons=get_seasons())
 
 @app.route('/players')
 def players_page():
-    """Display the players page with filters"""
+    """
+    Display the players page with filtering options.
+    Provide NBA teams and list of seasons for the filters.
+    """
     nba_teams = teams.get_teams()
-    return render_template('players.html', teams=nba_teams)
-
+    return render_template('players.html', teams=nba_teams, seasons=get_seasons())
 
 @app.route('/player/<int:player_id>')
-def player_detail(player_id):
-    """Display detailed stats for a specific player"""
-    return render_template('player_detail.html', player_id=player_id)
-
+def player_detail(player_id: int):
+    """
+    Display detailed stats for a specific player.  The template receives the player_id
+    and the seasons list for proper default values.
+    """
+    return render_template('player_detail.html', player_id=player_id, seasons=get_seasons())
 
 @app.route('/shot-charts')
 def shot_charts():
-    """Display interactive shot charts page"""
+    """
+    Interactive shot charts page.  Provide the list of teams and seasons
+    so the user can pick any team or year without hard‑coded options.
+    """
     nba_teams = teams.get_teams()
-    return render_template('shot_charts.html', teams=nba_teams)
-
+    return render_template('shot_charts.html', teams=nba_teams, seasons=get_seasons())
 
 @app.route('/advanced-metrics')
 def advanced_metrics():
-    """Display advanced metrics dashboard"""
-    return render_template('advanced_metrics.html')
-
+    """Display advanced metrics dashboard."""
+    return render_template('advanced_metrics.html', seasons=get_seasons())
 
 @app.route('/team-trends')
 def team_trends():
-    """Display team trends and analysis"""
+    """
+    Display team trends and analysis.  Pass the list of teams and seasons to the template.
+    """
     nba_teams = teams.get_teams()
-    return render_template('team_trends.html', teams=nba_teams)
-
+    return render_template('team_trends.html', teams=nba_teams, seasons=get_seasons())
 
 @app.route('/compare')
 def compare_players():
-    """Player comparison tool"""
-    return render_template('compare.html')
-
+    """
+    Player comparison tool.  Pass the seasons list so the user can select any year.
+    """
+    return render_template('compare.html', seasons=get_seasons())
 
 @app.route('/test-api')
 def test_api():
-    """Test if NBA API is working"""
+    """Test if NBA API and static endpoints are reachable."""
     try:
-        # Test with static data first
         all_teams = teams.get_teams()
         all_players = players.get_players()
-
         return jsonify({
             'success': True,
             'teams_count': len(all_teams),
@@ -98,91 +129,80 @@ def test_api():
             'sample_player': all_players[0] if all_players else None
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
-
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/players')
 def get_players():
-    """API endpoint to get filtered and sorted player data"""
+    """
+    API endpoint to get filtered and sorted player data.  Supports filtering by season,
+    team and position, sorting by any stat, and simple search.
+    """
     try:
-        # Get query parameters
-        season = request.args.get('season', '2023-24')
-        team = request.args.get('team', 'all')
-        position = request.args.get('position', 'all')
+        # Query parameters with defaults
+        season = request.args.get('season', get_seasons()[0])
+        team_code = request.args.get('team', 'all')
+        position_filter = request.args.get('position', 'all')
         sort_by = request.args.get('sort_by', 'PTS')
         search = request.args.get('search', '').lower()
 
-        # Add longer delay to avoid rate limiting
+        # Add a short delay to avoid hitting NBA's rate limit
         time.sleep(1)
 
-        # Try multiple times with increasing timeout
+        # Retry the API call up to 3 times on transient failures
         for attempt in range(3):
             try:
-                # Fetch player stats from NBA API with headers
                 player_stats = leaguedashplayerstats.LeagueDashPlayerStats(
                     season=season,
                     season_type_all_star='Regular Season',
                     headers=HEADERS,
-                    timeout=60,  # Increased timeout
+                    timeout=60,
                     proxy=PROXIES if PROXIES else None
                 )
-
-                # If successful, break the retry loop
-                break
+                break  # success, exit retry loop
             except Exception as e:
-                print(f"Attempt {attempt + 1} failed: {str(e)}")
-                if attempt < 2:  # Don't sleep on last attempt
-                    time.sleep(2)  # Wait before retry
+                print(f"Attempt {attempt + 1} failed: {e}")
+                if attempt < 2:
+                    time.sleep(2)
                 else:
                     raise e
 
-        # Convert to DataFrame
         df = player_stats.get_data_frames()[0]
+        print(f"Successfully retrieved {len(df)} players for season {season}")
 
-        # Debug: Print column names
-        print(f"Successfully retrieved {len(df)} players")
+        # Use provided POSITION column if available; otherwise fall back to simple assignment.
+        if 'POSITION' not in df.columns or df['POSITION'].isnull().all():
+            df['POSITION'] = df.apply(lambda row: assign_position_simple(row), axis=1)
 
-        # Add simple position assignment (G/F/C) based on player names or other logic
-        df['POSITION'] = df.apply(lambda row: assign_position_simple(row), axis=1)
-
-        # Filter by search term
+        # Apply search filter
         if search:
             df = df[df['PLAYER_NAME'].str.lower().str.contains(search)]
-
         # Filter by team
-        if team != 'all':
-            df = df[df['TEAM_ABBREVIATION'] == team]
-
-        # Filter by position
-        if position != 'all':
-            df = df[df['POSITION'].str.contains(position)]
-
-        # Sort by selected stat
+        if team_code != 'all':
+            df = df[df['TEAM_ABBREVIATION'] == team_code]
+        # Filter by position (match initial letter for G/F/C etc.)
+        if position_filter != 'all':
+            df = df[df['POSITION'].str.contains(position_filter, na=False)]
+        # Sort by selected stat if the column exists
         if sort_by in df.columns:
             df = df.sort_values(by=sort_by, ascending=False)
 
-        # Calculate advanced metrics correctly
+        # Calculate advanced metrics
         df['TS_PCT'] = df.apply(lambda row: calculate_true_shooting(row), axis=1)
         df['EFF'] = df.apply(lambda row: calculate_efficiency(row), axis=1)
 
-        # Select relevant columns (make sure they exist)
+        # Define the columns to return, preserving order
         display_columns = []
         for col in ['PLAYER_ID', 'PLAYER_NAME', 'TEAM_ABBREVIATION', 'POSITION', 'AGE', 'GP', 'MIN',
-                    'PTS', 'REB', 'AST', 'STL', 'BLK', 'FG_PCT', 'FG3_PCT', 'FT_PCT', 'TS_PCT', 'EFF', 'PF']:
+                    'PTS', 'REB', 'AST', 'STL', 'BLK', 'FG_PCT', 'FG3_PCT', 'FT_PCT',
+                    'TS_PCT', 'EFF', 'PF']:
             if col in df.columns:
                 display_columns.append(col)
-
         df_display = df[display_columns].fillna(0)
 
-        # Convert to dictionary
         players_data = df_display.to_dict('records')
 
-        # Format numbers for display
+        # Format numbers for display (convert proportions to percentages)
         for player in players_data:
-            # Handle percentages - they already come as decimals from API
             if 'FG_PCT' in player:
                 player['FG_PCT'] = round(player['FG_PCT'] * 100, 1)
             if 'FG3_PCT' in player:
@@ -191,29 +211,21 @@ def get_players():
                 player['FT_PCT'] = round(player['FT_PCT'] * 100, 1)
             if 'TS_PCT' in player:
                 player['TS_PCT'] = round(player['TS_PCT'], 1)
-
-            # Round other stats
+            # Round major stats to one decimal
             for stat in ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'EFF', 'PF']:
                 if stat in player:
                     player[stat] = round(player[stat], 1)
 
-        return jsonify({
-            'success': True,
-            'data': players_data,
-            'count': len(players_data)
-        })
+        return jsonify({'success': True, 'data': players_data, 'count': len(players_data)})
 
     except Exception as e:
-        print(f"Error in /api/players: {str(e)}")
+        print(f"Error in /api/players: {e}")
         print("Falling back to static player data...")
-
-        # Fallback: Use static player data
+        # Fallback: create mock player data if the API is unavailable
         try:
             all_players = players.get_players()
-
-            # Create mock data for display
             mock_data = []
-            for i, player in enumerate(all_players[:100]):  # Limit to 100 players
+            for i, player in enumerate(all_players[:100]):
                 mock_data.append({
                     'PLAYER_ID': player['id'],
                     'PLAYER_NAME': player['full_name'],
@@ -234,84 +246,59 @@ def get_players():
                     'EFF': round(25 - (i * 0.2), 1),
                     'PF': round(2.5 + (i * 0.01), 1)
                 })
-
-            # Apply filters
+            # Apply search and sort on mock data
             if search:
                 mock_data = [p for p in mock_data if search in p['PLAYER_NAME'].lower()]
-
-            # Sort
             if sort_by in ['PTS', 'REB', 'AST']:
                 mock_data.sort(key=lambda x: x[sort_by], reverse=True)
-
-            return jsonify({
-                'success': True,
-                'data': mock_data,
-                'count': len(mock_data),
-                'note': 'Using cached data due to API timeout'
-            })
-
-        except Exception as fallback_error:
-            return jsonify({
-                'success': False,
-                'error': 'NBA API is currently unavailable. Please try again later.'
-            })
-
+            return jsonify({'success': True, 'data': mock_data, 'count': len(mock_data),
+                            'note': 'Using cached data due to API timeout'})
+        except Exception:
+            return jsonify({'success': False, 'error': 'NBA API is currently unavailable. Please try again later.'})
 
 @app.route('/api/player/<int:player_id>')
-def get_player_detail(player_id):
-    """Get detailed stats for a specific player"""
+def get_player_detail(player_id: int):
+    """
+    API endpoint for detailed stats for a specific player.
+    Returns player information, career totals and season stats.
+    """
     try:
-        # Add delay to avoid rate limiting
         time.sleep(0.5)
-
-        # Get player info first
         player_info = commonplayerinfo.CommonPlayerInfo(
             player_id=player_id,
             headers=HEADERS,
             timeout=30
         )
-
         info_data = player_info.get_data_frames()[0]
         player_info_dict = info_data.to_dict('records')[0] if len(info_data) > 0 else {}
 
-        # Get player career stats
         player_profile = playerprofilev2.PlayerProfileV2(
             player_id=player_id,
             headers=HEADERS,
             timeout=30
         )
-
         career_stats = player_profile.get_data_frames()[0]
         season_stats = player_profile.get_data_frames()[1]
-
-        # Get career totals and season stats
-        career_totals = career_stats.to_dict('records') if len(career_stats) > 0 else []
-        seasons = season_stats.to_dict('records') if len(season_stats) > 0 else []
 
         return jsonify({
             'success': True,
             'player_info': player_info_dict,
-            'career_totals': career_totals,
-            'season_stats': seasons
+            'career_totals': career_stats.to_dict('records') if len(career_stats) > 0 else [],
+            'season_stats': season_stats.to_dict('records') if len(season_stats) > 0 else []
         })
-
     except Exception as e:
-        print(f"Error in /api/player/{player_id}: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
-
+        print(f"Error in /api/player/{player_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/shot-chart/<int:player_id>')
-def get_shot_chart(player_id):
-    """Get shot chart data for a player"""
+def get_shot_chart(player_id: int):
+    """
+    API endpoint to retrieve all shots for a player in a given season.
+    Accepts a 'season' query parameter; defaults to the most recent season.
+    """
     try:
-        season = request.args.get('season', '2023-24')
-
-        # Add delay to avoid rate limiting
+        season = request.args.get('season', get_seasons()[0])
         time.sleep(0.5)
-
         shot_chart = shotchartdetail.ShotChartDetail(
             team_id=0,
             player_id=player_id,
@@ -320,49 +307,37 @@ def get_shot_chart(player_id):
             headers=HEADERS,
             timeout=30
         )
-
         shots = shot_chart.get_data_frames()[0]
-        shots_data = shots.to_dict('records')
-
-        return jsonify({
-            'success': True,
-            'shots': shots_data
-        })
-
+        return jsonify({'success': True, 'shots': shots.to_dict('records')})
     except Exception as e:
-        print(f"Error in /api/shot-chart/{player_id}: {str(e)}")
-        # Return mock shot data for testing
+        print(f"Error in /api/shot-chart/{player_id}: {e}")
+        # Generate mock shot data for testing if the API fails
         import random
         mock_shots = []
-        for i in range(100):
+        for _ in range(100):
             mock_shots.append({
                 'LOC_X': random.randint(-250, 250),
                 'LOC_Y': random.randint(0, 400),
                 'SHOT_MADE_FLAG': random.randint(0, 1),
                 'SHOT_TYPE': '2PT Field Goal',
-                'SHOT_ZONE_BASIC': random.choice(
-                    ['Restricted Area', 'In The Paint (Non-RA)', 'Mid-Range', 'Above the Break 3']),
+                'SHOT_ZONE_BASIC': random.choice([
+                    'Restricted Area', 'In The Paint (Non-RA)',
+                    'Mid-Range', 'Above the Break 3'
+                ]),
                 'SHOT_DISTANCE': random.randint(0, 30),
                 'PERIOD': random.randint(1, 4)
             })
+        return jsonify({'success': True, 'shots': mock_shots, 'note': 'Using mock data due to API error'})
 
-        return jsonify({
-            'success': True,
-            'shots': mock_shots,
-            'note': 'Using mock data due to API error'
-        })
-
-
-@app.route('/api/team-stats/<team_id>')
-def get_team_stats(team_id):
-    """Get team statistics and trends"""
+@app.route('/api/team-stats/<int:team_id>')
+def get_team_stats(team_id: int):
+    """
+    API endpoint to retrieve team statistics and trends for a specific season.
+    Accepts a 'season' query parameter; defaults to the most recent season.
+    """
     try:
-        season = request.args.get('season', '2023-24')
-
-        # Add delay to avoid rate limiting
+        season = request.args.get('season', get_seasons()[0])
         time.sleep(0.5)
-
-        # Get general team stats
         team_stats = teamdashboardbygeneralsplits.TeamDashboardByGeneralSplits(
             team_id=team_id,
             season=season,
@@ -370,29 +345,18 @@ def get_team_stats(team_id):
             headers=HEADERS,
             timeout=30
         )
-
-        # Get the overall stats
         overall = team_stats.get_data_frames()[0]
         if len(overall) > 0:
             stats = overall.to_dict('records')[0]
-
-            # Calculate net rating if not present
+            # Calculate net rating if missing
             if 'NET_RATING' not in stats or stats['NET_RATING'] == 0:
-                off_rating = stats.get('OFF_RATING', 0)
-                def_rating = stats.get('DEF_RATING', 0)
-                stats['NET_RATING'] = off_rating - def_rating
-
-            return jsonify({
-                'success': True,
-                'stats': stats
-            })
+                stats['NET_RATING'] = stats.get('OFF_RATING', 0) - stats.get('DEF_RATING', 0)
+            return jsonify({'success': True, 'stats': stats})
         else:
             raise Exception("No team data found")
-
     except Exception as e:
-        print(f"Error in /api/team-stats/{team_id}: {str(e)}")
-
-        # Return mock data with realistic values
+        print(f"Error in /api/team-stats/{team_id}: {e}")
+        # Return realistic mock data
         return jsonify({
             'success': True,
             'stats': {
@@ -416,131 +380,121 @@ def get_team_stats(team_id):
             'note': 'Using mock data due to API error'
         })
 
-
 @app.route('/api/export/players')
 def export_players():
-    """Export filtered player data as CSV"""
+    """
+    Export filtered player data as a CSV file.  Uses the same filters as /api/players.
+    """
     try:
-        # Get the same filters as the main API
-        season = request.args.get('season', '2023-24')
-        team = request.args.get('team', 'all')
-        position = request.args.get('position', 'all')
+        season = request.args.get('season', get_seasons()[0])
+        team_code = request.args.get('team', 'all')
+        position_filter = request.args.get('position', 'all')
         sort_by = request.args.get('sort_by', 'PTS')
-
-        # Add delay to avoid rate limiting
         time.sleep(0.5)
 
-        # Get player data (same logic as get_players)
         player_stats = leaguedashplayerstats.LeagueDashPlayerStats(
             season=season,
             season_type_all_star='Regular Season',
             headers=HEADERS,
             timeout=30
         )
-
         df = player_stats.get_data_frames()[0]
-
-        # Apply filters
-        if team != 'all':
-            df = df[df['TEAM_ABBREVIATION'] == team]
-
-        # Sort
+        if team_code != 'all':
+            df = df[df['TEAM_ABBREVIATION'] == team_code]
         if sort_by in df.columns:
             df = df.sort_values(by=sort_by, ascending=False)
 
-        # Create CSV
         output = io.StringIO()
         df.to_csv(output, index=False)
         output.seek(0)
-
-        # Create a BytesIO object
         mem = io.BytesIO()
         mem.write(output.getvalue().encode('utf-8'))
         mem.seek(0)
-
         return send_file(
             mem,
             mimetype='text/csv',
             as_attachment=True,
             download_name=f'nba_players_{season}_{datetime.now().strftime("%Y%m%d")}.csv'
         )
-
     except Exception as e:
-        print(f"Error in /api/export/players: {str(e)}")
+        print(f"Error in /api/export/players: {e}")
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/search-players')
 def search_players():
-    """Search for players by name for comparison tool"""
+    """Search for players by name for comparison tool."""
     try:
         query = request.args.get('q', '').lower()
         all_players = players.get_players()
-
         matching = [
-                       {'id': p['id'], 'name': p['full_name'], 'is_active': p['is_active']}
-                       for p in all_players
-                       if query in p['full_name'].lower()
-                   ][:10]  # Limit to 10 results
-
-        return jsonify({
-            'success': True,
-            'players': matching
-        })
-
+            {'id': p['id'], 'name': p['full_name'], 'is_active': p['is_active']}
+            for p in all_players
+            if query in p['full_name'].lower()
+        ][:10]
+        return jsonify({'success': True, 'players': matching})
     except Exception as e:
-        print(f"Error in /api/search-players: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
+        print(f"Error in /api/search-players: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
-
+# --------------------------------------------------------------------------
 # Helper functions
+# --------------------------------------------------------------------------
 def assign_position_simple(row):
-    """Assign position based on simple heuristics"""
-    name = row.get('PLAYER_NAME', '').lower()
+    """
+    Assign a player's position based on available data.
 
-    # Known centers
-    centers = ['embiid', 'jokic', 'gobert', 'adams', 'lopez', 'nurkic', 'vucevic', 'allen', 'adebayo', 'ayton',
-               'valanciunas']
-    # Known guards
-    guards = ['curry', 'lillard', 'irving', 'paul', 'westbrook', 'harden', 'booker', 'mitchell', 'young', 'morant',
-              'ball', 'murray']
+    If the row contains a 'POSITION' value (as returned by the NBA API), return that directly.
+    Otherwise, use simple heuristics based on the player's last name.  This fallback
+    is primarily used for mock data when the API is unavailable.
+    """
+    # Check if row supports key lookup (pandas Series or dict)
+    try:
+        pos = row.get('POSITION')
+    except AttributeError:
+        pos = row['POSITION'] if 'POSITION' in row else None
+    if pos:
+        return pos
 
+    name = row.get('PLAYER_NAME', '').lower() if isinstance(row, dict) else str(row.get('PLAYER_NAME', '')).lower()
+
+    centers = [
+        'embiid', 'jokic', 'gobert', 'adams', 'lopez', 'nurkic',
+        'vucevic', 'allen', 'adebayo', 'ayton', 'valanciunas'
+    ]
+    guards = [
+        'curry', 'lillard', 'irving', 'paul', 'westbrook', 'harden',
+        'booker', 'mitchell', 'young', 'morant', 'ball', 'murray'
+    ]
     for center in centers:
         if center in name:
             return 'C'
-
     for guard in guards:
         if guard in name:
             return 'G'
-
-    # Default to forward
     return 'F'
 
-
 def calculate_true_shooting(row):
-    """Calculate True Shooting Percentage"""
+    """
+    Calculate True Shooting Percentage (TS%).
+    Returns a percentage (e.g., 58.5) rather than a decimal (0.585).
+    """
     pts = row.get('PTS', 0)
     fga = row.get('FGA', 0)
     fta = row.get('FTA', 0)
-
-    if fga + 0.44 * fta == 0:
+    denominator = fga + 0.44 * fta
+    if denominator == 0:
         return 0
-
-    return (pts / (2 * (fga + 0.44 * fta))) * 100
-
+    return (pts / (2 * denominator)) * 100
 
 def calculate_efficiency(row):
-    """Calculate simple efficiency rating"""
+    """
+    Calculate a simple efficiency rating:
+    (PTS + REB + AST + STL + BLK) – ((FGA – FGM) + (FTA – FTM) + TOV)
+    """
     positive = row.get('PTS', 0) + row.get('REB', 0) + row.get('AST', 0) + row.get('STL', 0) + row.get('BLK', 0)
     negative = (row.get('FGA', 0) - row.get('FGM', 0)) + (row.get('FTA', 0) - row.get('FTM', 0)) + row.get('TOV', 0)
-
     return positive - negative
 
-
-# main driver function
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, port=port)
