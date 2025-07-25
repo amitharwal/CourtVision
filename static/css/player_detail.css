@@ -29,7 +29,6 @@ body {
   max-width: 1200px;
 }
 
-/* Header */
 header {
   display: flex;
   justify-content: space-between;
@@ -68,7 +67,6 @@ nav a:hover {
   color: var(--secondary);
 }
 
-/* Back Link */
 .back-link {
   margin-bottom: 20px;
 }
@@ -87,7 +85,6 @@ nav a:hover {
   color: var(--accent);
 }
 
-/* Player Header */
 .player-header {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -160,7 +157,6 @@ nav a:hover {
   transform: translate(-2px, -2px);
 }
 
-/* Stats Tabs */
 .stats-tabs {
   display: flex;
   gap: 10px;
@@ -190,7 +186,6 @@ nav a:hover {
   background-color: var(--secondary);
 }
 
-/* Stats Content */
 .stats-content {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -227,7 +222,6 @@ nav a:hover {
   font-weight: bold;
 }
 
-/* Stats Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -269,7 +263,6 @@ nav a:hover {
   color: var(--accent);
 }
 
-/* Career Stats Table */
 .career-stats-table {
   overflow-x: auto;
 }
@@ -299,7 +292,6 @@ nav a:hover {
   background-color: var(--light-gray);
 }
 
-/* Shot Chart */
 .shot-chart-header {
   display: flex;
   justify-content: space-between;
@@ -345,7 +337,6 @@ nav a:hover {
   box-shadow: var(--shadow);
 }
 
-/* Shot Zones */
 .shot-zones {
   border-top: 2px solid var(--primary);
   padding-top: 20px;
@@ -390,7 +381,6 @@ nav a:hover {
   color: var(--accent);
 }
 
-/* Footer */
 footer {
   text-align: center;
   font-size: 14px;
@@ -403,7 +393,6 @@ footer a {
   font-weight: bold;
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   header {
     flex-direction: column;

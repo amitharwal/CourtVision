@@ -29,7 +29,6 @@ body {
   max-width: 1200px;
 }
 
-/* Header */
 header {
   display: flex;
   justify-content: space-between;
@@ -68,7 +67,6 @@ nav a:hover, nav a.active {
   color: var(--secondary);
 }
 
-/* Compare Header */
 .compare-header {
   text-align: center;
   margin-bottom: 30px;
@@ -84,7 +82,6 @@ nav a:hover, nav a.active {
   font-size: 16px;
 }
 
-/* Player Selection */
 .player-selection {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -173,7 +170,6 @@ nav a:hover, nav a.active {
   font-size: 16px;
 }
 
-/* Add Player Section */
 .add-player-section {
   position: relative;
 }
@@ -223,7 +219,6 @@ nav a:hover, nav a.active {
   color: var(--muted);
 }
 
-/* Comparison Section */
 .comparison-section {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -270,7 +265,6 @@ nav a:hover, nav a.active {
   transform: translate(-2px, -2px);
 }
 
-/* Comparison Content */
 .comparison-content {
   min-height: 300px;
 }
@@ -288,7 +282,6 @@ nav a:hover, nav a.active {
   font-weight: bold;
 }
 
-/* Comparison Grid */
 .comparison-grid {
   width: 100%;
 }
@@ -365,7 +358,6 @@ nav a:hover, nav a.active {
   background-color: #fff5f5;
 }
 
-/* Stat Bar */
 .stat-bar {
   width: 100%;
   height: 6px;
@@ -381,7 +373,6 @@ nav a:hover, nav a.active {
   transition: width 0.5s ease;
 }
 
-/* Footer */
 footer {
   text-align: center;
   font-size: 14px;
@@ -394,7 +385,6 @@ footer a {
   font-weight: bold;
 }
 
-/* Responsive */
 @media (max-width: 1024px) {
   .comparison-header-row,
   .stat-row {

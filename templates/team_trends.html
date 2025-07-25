@@ -3,391 +3,386 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Trends - Court Vision</title>
+    <title>Team Trends</title>
     <link rel="stylesheet" href="/static/css/team_trends.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo">Court Vision</div>
-            <nav>
-                <a href="/">Home</a>
-                <a href="/compare">Compare</a>
-                <a href="/players">Players</a>
-                <a href="/team-trends" class="active">Teams</a>
-                <a href="/shot-charts">Shot Charts</a>
-            </nav>
-        </header>
+<div class="container">
+    <header>
+        <div class="logo">Court Vision 🏀</div>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/players">Players</a>
+            <a href="/team-trends" class="active">Teams</a>
+            <a href="/shot-charts">Shot Charts</a>
+            <a href="/compare">Compare</a>
+            <a href="/advanced-metrics">Adv. Metrics</a>
+        </nav>
+    </header>
 
-        <section class="trends-header">
-            <h2>NBA Team Trends & Analytics</h2>
-            <p>Analyze team performance, win-loss trends, and efficiency ratings</p>
-        </section>
+    <section class="trends-header">
+        <h2>NBA Team Trends & Analytics</h2>
+        <p>Analyze team performance, win-loss trends, and efficiency ratings</p>
+    </section>
 
-        <section class="team-selector">
-            <div class="selector-controls">
-                <div class="control-group">
-                    <label for="team-select">Select Team</label>
-                    <select id="team-select">
-                        <option value="">Choose a team...</option>
-                        {% for team in teams %}
+    <section class="team-selector">
+        <div class="selector-controls">
+            <div class="control-group">
+                <label for="team-select">Select Team</label>
+                <select id="team-select">
+                    <option value="">Choose a team...</option>
+                    {% for team in teams %}
                         <option value="{{ team.id }}">{{ team.full_name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="control-group">
-                    <label for="season-select">Season</label>
-                    <select id="season-select">
-                        <option value="2023-24">2023-24</option>
-                        <option value="2022-23">2022-23</option>
-                        <option value="2021-22">2021-22</option>
-                        <option value="2020-21">2020-21</option>
-                        <option value="2019-20">2019-20</option>
-                    </select>
-                </div>
-
-                <button id="load-data" class="load-btn">Load Team Data</button>
-            </div>
-        </section>
-
-        <section id="team-overview" class="team-overview" style="display: none;">
-            <div class="overview-header">
-                <h3 id="team-name"></h3>
-                <div id="team-record" class="team-record"></div>
+                    {% endfor %}
+                </select>
             </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h4>Offensive Stats</h4>
-                    <div id="offensive-stats" class="stat-list"></div>
-                </div>
-
-                <div class="stat-card">
-                    <h4>Defensive Stats</h4>
-                    <div id="defensive-stats" class="stat-list"></div>
-                </div>
-
-                <div class="stat-card">
-                    <h4>Efficiency Metrics</h4>
-                    <div id="efficiency-stats" class="stat-list"></div>
-                </div>
-
-                <div class="stat-card">
-                    <h4>Team Rankings</h4>
-                    <div id="team-rankings" class="stat-list"></div>
-                </div>
-            </div>
-        </section>
-
-        <section id="trends-visualization" class="trends-visualization" style="display: none;">
-            <h3>Performance Trends</h3>
-            <div class="trend-tabs">
-                <button class="trend-tab active" data-trend="monthly">Monthly Performance</button>
-                <button class="trend-tab" data-trend="home-away">Home vs Away</button>
-                <button class="trend-tab" data-trend="conference">vs Conference</button>
+            <div class="control-group">
+                <label for="season-select">Season</label>
+                <select id="season-select">
+                    {% for season in seasons %}
+                        <option value="{{ season }}" {% if loop.first %}selected{% endif %}>{{ season }}</option>
+                    {% endfor %}
+                </select>
             </div>
 
-            <div id="trend-content" class="trend-content">
-                <!-- Trend visualizations will appear here -->
-            </div>
-        </section>
+            <button id="load-data" class="load-btn">Load Team Data</button>
+        </div>
+    </section>
 
-        <section id="roster-analysis" class="roster-analysis" style="display: none;">
-            <h3>Roster Impact Analysis</h3>
-            <div id="roster-content" class="roster-content">
-                <!-- Top players by various metrics will appear here -->
-            </div>
-        </section>
-
-        <div id="loading" class="loading" style="display: none;">
-            <div class="loading-spinner"></div>
-            <p>Loading team data...</p>
+    <section id="team-overview" class="team-overview" style="display: none;">
+        <div class="overview-header">
+            <h3 id="team-name"></h3>
+            <div id="team-record" class="team-record"></div>
         </div>
 
-        <footer>
-            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
-        </footer>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h4>Offensive Stats</h4>
+                <div id="offensive-stats" class="stat-list"></div>
+            </div>
+
+            <div class="stat-card">
+                <h4>Defensive Stats</h4>
+                <div id="defensive-stats" class="stat-list"></div>
+            </div>
+
+            <div class="stat-card">
+                <h4>Efficiency Metrics</h4>
+                <div id="efficiency-stats" class="stat-list"></div>
+            </div>
+
+            <div class="stat-card">
+                <h4>Team Rankings</h4>
+                <div id="team-rankings" class="stat-list"></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="trends-visualization" class="trends-visualization" style="display: none;">
+        <h3>Performance Trends</h3>
+        <div class="trend-tabs">
+            <button class="trend-tab active" data-trend="monthly">Monthly Performance</button>
+        </div>
+
+        <div id="trend-content" class="trend-content"></div>
+    </section>
+
+    <section id="roster-analysis" class="roster-analysis" style="display: none;">
+        <h3>Roster Impact Analysis</h3>
+        <div id="roster-content" class="roster-content"></div>
+    </section>
+
+    <div id="loading" class="loading" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>Loading team data...</p>
     </div>
 
-    <script>
-        let currentTeamId = null;
-        let teamData = null;
+    <footer>
+        © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+    </footer>
+</div>
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            setupEventListeners();
+<script>
+
+    function displayTrends() {
+        displayTrend('monthly');
+    }
+
+    let currentTeamId = null;
+    let teamData = null;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function () {
+        setupEventListeners();
+    });
+
+    function setupEventListeners() {
+        document.getElementById('load-data').addEventListener('click', loadTeamData);
+        document.getElementById('team-select').addEventListener('change', function () {
+            currentTeamId = this.value;
         });
 
-        function setupEventListeners() {
-            document.getElementById('load-data').addEventListener('click', loadTeamData);
-            document.getElementById('team-select').addEventListener('change', function() {
-                currentTeamId = this.value;
+        // Trend tabs
+        document.querySelectorAll('.trend-tab').forEach(tab => {
+            tab.addEventListener('click', function () {
+                document.querySelectorAll('.trend-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                displayTrend(this.dataset.trend);
             });
+        });
+    }
 
-            // Trend tabs
-            document.querySelectorAll('.trend-tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    document.querySelectorAll('.trend-tab').forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    displayTrend(this.dataset.trend);
-                });
-            });
+    async function loadTeamData() {
+        if (!currentTeamId) {
+            alert('Please select a team');
+            return;
         }
 
-        async function loadTeamData() {
-            if (!currentTeamId) {
-                alert('Please select a team');
-                return;
+        // Show spinner + hide everything before fetch
+    showLoading(true);
+    hideAllSections();
+    const season = document.getElementById('season-select').value;
+
+    // Fetch & parse JSON
+    let data;
+    try {
+        console.log('Requesting /api/team-stats/', currentTeamId, season);
+        const resp = await fetch(`/api/team-stats/${currentTeamId}?season=${season}`);
+        data = await resp.json();
+        console.log('team‑stats payload:', data);
+    } catch (fetchErr) {
+        console.error('Network error in loadTeamData:', fetchErr);
+        alert('Network error loading team data');
+        showLoading(false);
+        return;
+    }
+
+    // If the API says “success: false”…
+    if (!data.success) {
+        console.error('API failure payload:', data);
+        alert('API error: ' + (data.error||'unknown'));
+        showLoading(false);
+        return;
+    }
+
+    // Any exception here will be uncaught and show up as a red error in the console.
+    teamData = data.stats;
+    console.log('About to render with teamData:', teamData);
+    displayTeamOverview();
+    displayTrends();
+    loadRosterAnalysis();
+
+    // Reveal the sections
+    document.getElementById('team-overview').style.display = 'block';
+    document.getElementById('trends-visualization').style.display = 'block';
+    document.getElementById('roster-analysis').style.display = 'block';
+
+    // Hide spinner
+    showLoading(false);
+    }
+
+    function displayTeamOverview() {
+        const teamName = document.querySelector('#team-select option:checked').textContent;
+        document.getElementById('team-name').textContent = teamName;
+        document.getElementById('team-record').innerHTML = `
+    <span class="wins">${teamData.W} W</span> -
+    <span class="losses">${teamData.L} L</span>
+    <span class="win-pct">(${(teamData.W_PCT * 100).toFixed(1)}%)</span>
+  `;
+
+        // Offensive stats
+        document.getElementById('offensive-stats').innerHTML = `
+    <div class="stat-item">
+      <span class="stat-label">Points Per Game</span>
+      <span class="stat-value">${teamData.PPG.toFixed(1)}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Rebounds Per Game</span>
+      <span class="stat-value">${teamData.RPG.toFixed(1)}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Assists Per Game</span>
+      <span class="stat-value">${teamData.APG.toFixed(1)}</span>
+    </div>
+  `;
+
+        // Defensive stats
+        document.getElementById('defensive-stats').innerHTML = `
+    <div class="stat-item">
+      <span class="stat-label">Opp Points Per Game</span>
+      <span class="stat-value">${teamData.OPP_PPG.toFixed(1)}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Steals Per Game</span>
+      <span class="stat-value">${teamData.SPG.toFixed(1)}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Blocks Per Game</span>
+      <span class="stat-value">${teamData.BPG.toFixed(1)}</span>
+    </div>
+  `;
+
+        // Efficiency metrics
+        const net = teamData.NET_RATING;
+        document.getElementById('efficiency-stats').innerHTML = `
+    <div class="stat-item">
+      <span class="stat-label">Offensive Rating</span>
+      <span class="stat-value">${teamData.OFF_RATING.toFixed(1)}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Defensive Rating</span>
+      <span class="stat-value">${teamData.DEF_RATING.toFixed(1)}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Net Rating</span>
+      <span class="stat-value ${net > 0 ? 'positive' : net < 0 ? 'negative' : ''}">${net.toFixed(1)}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Pace</span>
+      <span class="stat-value">${teamData.PACE.toFixed(1)}</span>
+    </div>
+  `;
+
+        // Home/Road
+        document.getElementById('team-rankings').innerHTML = `
+    <div class="stat-item">
+      <span class="stat-label">Home Record</span>
+      <span class="stat-value">${teamData.HOME_RECORD}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Road Record</span>
+      <span class="stat-value">${teamData.ROAD_RECORD}</span>
+    </div>
+  `;
+    }
+
+
+    function displayTrend(type) {
+  const content = document.getElementById('trend-content');
+  content.innerHTML = `
+    <div class="trend-chart">
+      <h4>Win % by Month</h4>
+      <div class="bar-chart">
+        <canvas id="monthlyChart" width="600" height="300"></canvas>
+      </div>
+    </div>
+  `;
+  generateMonthlyChart(currentTeamId, document.getElementById('season-select').value);
+}
+
+
+    async function generateMonthlyChart(teamId, season) {
+        const months    = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
+        const monthNums = [ 10 ,  11 ,  12 ,   1  ,   2  ,   3  ,   4   ];
+        const monthLabels = [];
+        const winPercentages = [];
+
+    for (let i = 0; i < months.length; i++) {
+        const monthNum = monthNums[i];
+
+        try {
+            const response = await fetch(
+               `/api/team-monthly?team_id=${teamId}&season=${season}&month=${monthNum}`
+            );
+            const data = await response.json();
+            if (data.success) {
+                const wins      = data.wins;
+                const losses    = data.losses;
+                const totalGames = wins + losses;
+                const winPct    = totalGames > 0 ? (wins / totalGames) * 100 : 0;
+
+                monthLabels.push(months[i]);
+                winPercentages.push(parseFloat(winPct.toFixed(1)));
+            } else {
+                console.error(`Error fetching data for month ${monthNum}:`, data.error);
             }
+        } catch (err) {
+            console.error(`Exception for month ${monthNum}:`, err);
+        }
+    }
 
-            showLoading(true);
-            hideAllSections();
+        const ctx = document.getElementById('monthlyChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
 
-            const season = document.getElementById('season-select').value;
-
-            try {
-                // Load team stats
-                const response = await fetch(`/api/team-stats/${currentTeamId}?season=${season}`);
-                const data = await response.json();
-
-                if (data.success) {
-                    teamData = data.stats;
-                    displayTeamOverview();
-                    displayTrends();
-                    loadRosterAnalysis();
-
-                    // Show sections
-                    document.getElementById('team-overview').style.display = 'block';
-                    document.getElementById('trends-visualization').style.display = 'block';
-                    document.getElementById('roster-analysis').style.display = 'block';
-                } else {
-                    alert('Failed to load team data');
+                labels: monthLabels,
+                datasets: [{
+                    label: 'Win %',
+                    data: winPercentages,
+                    backgroundColor: '#3e95cd'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
                 }
-            } catch (error) {
-                alert('Error loading team data');
-            } finally {
-                showLoading(false);
             }
-        }
+        });
+    }
 
-        function displayTeamOverview() {
-            const teamName = document.getElementById('team-select').options[document.getElementById('team-select').selectedIndex].text;
-            document.getElementById('team-name').textContent = teamName;
-            document.getElementById('team-record').innerHTML = `
-                <span class="wins">${teamData.W || 0} W</span> -
-                <span class="losses">${teamData.L || 0} L</span>
-                <span class="win-pct">(${((teamData.W_PCT || 0) * 100).toFixed(1)}%)</span>
-            `;
+    async function loadRosterAnalysis() {
+    const content = document.getElementById('roster-content');
+    content.innerHTML = 'Loading...';
 
-            // Offensive stats
-            document.getElementById('offensive-stats').innerHTML = `
-                <div class="stat-item">
-                    <span class="stat-label">Points Per Game</span>
-                    <span class="stat-value">${(teamData.PTS || 0).toFixed(1)}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Field Goal %</span>
-                    <span class="stat-value">${((teamData.FG_PCT || 0) * 100).toFixed(1)}%</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">3-Point %</span>
-                    <span class="stat-value">${((teamData.FG3_PCT || 0) * 100).toFixed(1)}%</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Assists Per Game</span>
-                    <span class="stat-value">${(teamData.AST || 0).toFixed(1)}</span>
-                </div>
-            `;
+    const season = document.getElementById('season-select').value;
+    const response = await fetch(`/api/roster-analysis/${currentTeamId}?season=${season}`);
+    const data = await response.json();
 
-            // Defensive stats
-            document.getElementById('defensive-stats').innerHTML = `
-                <div class="stat-item">
-                    <span class="stat-label">Opp Points Per Game</span>
-                    <span class="stat-value">${(teamData.OPP_PTS || 0).toFixed(1)}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Rebounds Per Game</span>
-                    <span class="stat-value">${(teamData.REB || 0).toFixed(1)}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Steals Per Game</span>
-                    <span class="stat-value">${(teamData.STL || 0).toFixed(1)}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Blocks Per Game</span>
-                    <span class="stat-value">${(teamData.BLK || 0).toFixed(1)}</span>
-                </div>
-            `;
+    if (!data.success) {
+        content.innerHTML = 'Failed to load roster stats.';
+        return;
+    }
 
-            // Efficiency stats
-            const netRating = teamData.NET_RATING || 0;
-            document.getElementById('efficiency-stats').innerHTML = `
-                <div class="stat-item">
-                    <span class="stat-label">Offensive Rating</span>
-                    <span class="stat-value">${(teamData.OFF_RATING || 0).toFixed(1)}</span>
+    content.innerHTML = `
+        <div class="roster-grid">
+            <div class="roster-card">
+                <h4>Top Scorer</h4>
+                <div class="player-highlight">
+                    <span class="player-name">${data.top_scorer.name}</span>
+                    <span class="player-stat">${data.top_scorer.stat.toFixed(1)} PPG</span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-label">Defensive Rating</span>
-                    <span class="stat-value">${(teamData.DEF_RATING || 0).toFixed(1)}</span>
+            </div>
+            <div class="roster-card">
+                <h4>Top Rebounder</h4>
+                <div class="player-highlight">
+                    <span class="player-name">${data.top_rebounder.name}</span>
+                    <span class="player-stat">${data.top_rebounder.stat.toFixed(1)} RPG</span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-label">Net Rating</span>
-                    <span class="stat-value ${netRating > 0 ? 'positive' : netRating < 0 ? 'negative' : ''}">${netRating.toFixed(1)}</span>
+            </div>
+            <div class="roster-card">
+                <h4>Top Playmaker</h4>
+                <div class="player-highlight">
+                    <span class="player-name">${data.top_playmaker.name}</span>
+                    <span class="player-stat">${data.top_playmaker.stat.toFixed(1)} APG</span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-label">Pace</span>
-                    <span class="stat-value">${(teamData.PACE || 0).toFixed(1)}</span>
+            </div>
+            <div class="roster-card">
+                <h4>Most Efficient</h4>
+                <div class="player-highlight">
+                    <span class="player-name">${data.most_efficient.name}</span>
+                    <span class="player-stat">${data.most_efficient.stat.toFixed(1)} EFF</span>
                 </div>
-            `;
+            </div>
+        </div>
+    `;
+}
 
-            // Rankings (simplified - in real app would compare to other teams)
-            document.getElementById('team-rankings').innerHTML = `
-                <div class="stat-item">
-                    <span class="stat-label">Conference</span>
-                    <span class="stat-value">${teamData.CONF_RANK || 'N/A'}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Division</span>
-                    <span class="stat-value">${teamData.DIV_RANK || 'N/A'}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Last 10 Games</span>
-                    <span class="stat-value">${teamData.L10 || 'N/A'}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Streak</span>
-                    <span class="stat-value">${teamData.STRK || 'N/A'}</span>
-                </div>
-            `;
-        }
+    function showLoading(show) {
+        document.getElementById('loading').style.display = show ? 'flex' : 'none';
+    }
 
-        function displayTrends() {
-            displayTrend('monthly');
-        }
-
-        function displayTrend(type) {
-            const content = document.getElementById('trend-content');
-
-            switch(type) {
-                case 'monthly':
-                    content.innerHTML = `
-                        <div class="trend-chart">
-                            <h4>Win Percentage by Month</h4>
-                            <div class="bar-chart">
-                                ${generateMonthlyChart()}
-                            </div>
-                        </div>
-                    `;
-                    break;
-
-                case 'home-away':
-                    content.innerHTML = `
-                        <div class="split-stats">
-                            <div class="split-card home">
-                                <h4>Home Games</h4>
-                                <div class="split-record">${teamData.HOME_RECORD || 'N/A'}</div>
-                                <div class="split-stats-detail">
-                                    <p>PPG: ${(teamData.PTS_HOME || 0).toFixed(1)}</p>
-                                    <p>OPP PPG: ${(teamData.OPP_PTS_HOME || 0).toFixed(1)}</p>
-                                </div>
-                            </div>
-                            <div class="split-card away">
-                                <h4>Away Games</h4>
-                                <div class="split-record">${teamData.ROAD_RECORD || 'N/A'}</div>
-                                <div class="split-stats-detail">
-                                    <p>PPG: ${(teamData.PTS_ROAD || 0).toFixed(1)}</p>
-                                    <p>OPP PPG: ${(teamData.OPP_PTS_ROAD || 0).toFixed(1)}</p>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    break;
-
-                case 'conference':
-                    content.innerHTML = `
-                        <div class="conference-stats">
-                            <h4>Conference Play</h4>
-                            <div class="conf-grid">
-                                <div class="conf-stat">
-                                    <span>vs East</span>
-                                    <span class="conf-record">${teamData.VS_EAST || 'N/A'}</span>
-                                </div>
-                                <div class="conf-stat">
-                                    <span>vs West</span>
-                                    <span class="conf-record">${teamData.VS_WEST || 'N/A'}</span>
-                                </div>
-                                <div class="conf-stat">
-                                    <span>vs Division</span>
-                                    <span class="conf-record">${teamData.VS_DIV || 'N/A'}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    break;
-            }
-        }
-
-        function generateMonthlyChart() {
-            // Simplified chart - in real app would use actual monthly data
-            const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
-            const values = months.map(() => Math.floor(Math.random() * 40) + 30);
-
-            return months.map((month, i) => `
-                <div class="bar-column">
-                    <span class="bar-value">${values[i]}%</span>
-                    <div class="bar" style="height: ${values[i]}%"></div>
-                    <span class="bar-label">${month}</span>
-                </div>
-            `).join('');
-        }
-
-        async function loadRosterAnalysis() {
-            // In real app, would load actual player data for the team
-            const content = document.getElementById('roster-content');
-            content.innerHTML = `
-                <div class="roster-grid">
-                    <div class="roster-card">
-                        <h4>Top Scorer</h4>
-                        <div class="player-highlight">
-                            <span class="player-name">Loading...</span>
-                            <span class="player-stat">-- PPG</span>
-                        </div>
-                    </div>
-                    <div class="roster-card">
-                        <h4>Top Rebounder</h4>
-                        <div class="player-highlight">
-                            <span class="player-name">Loading...</span>
-                            <span class="player-stat">-- RPG</span>
-                        </div>
-                    </div>
-                    <div class="roster-card">
-                        <h4>Top Playmaker</h4>
-                        <div class="player-highlight">
-                            <span class="player-name">Loading...</span>
-                            <span class="player-stat">-- APG</span>
-                        </div>
-                    </div>
-                    <div class="roster-card">
-                        <h4>Most Efficient</h4>
-                        <div class="player-highlight">
-                            <span class="player-name">Loading...</span>
-                            <span class="player-stat">-- EFF</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function showLoading(show) {
-            document.getElementById('loading').style.display = show ? 'flex' : 'none';
-        }
-
-        function hideAllSections() {
-            document.getElementById('team-overview').style.display = 'none';
-            document.getElementById('trends-visualization').style.display = 'none';
-            document.getElementById('roster-analysis').style.display = 'none';
-        }
-    </script>
+    function hideAllSections() {
+        document.getElementById('team-overview').style.display = 'none';
+        document.getElementById('trends-visualization').style.display = 'none';
+        document.getElementById('roster-analysis').style.display = 'none';
+    }
+</script>
 </body>
 </html>

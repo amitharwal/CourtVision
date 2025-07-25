@@ -30,7 +30,6 @@ body {
   max-width: 1200px;
 }
 
-/* Header */
 header {
   display: flex;
   justify-content: space-between;
@@ -69,7 +68,6 @@ nav a:hover, nav a.active {
   color: var(--secondary);
 }
 
-/* Trends Header */
 .trend-tab.active {
   background-color: var(--secondary);
   box-shadow: -2px -2px 0px var(--primary);
@@ -83,7 +81,6 @@ nav a:hover, nav a.active {
   min-height: 300px;
 }
 
-/* Bar Chart */
 .bar-chart {
   display: flex;
   justify-content: space-around;
@@ -127,7 +124,6 @@ nav a:hover, nav a.active {
   font-size: 12px;
 }
 
-/* Split Stats */
 .split-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -169,7 +165,6 @@ nav a:hover, nav a.active {
   margin: 5px 0;
 }
 
-/* Conference Stats */
 .conference-stats {
   margin-top: 20px;
 }
@@ -205,7 +200,6 @@ nav a:hover, nav a.active {
   color: var(--accent);
 }
 
-/* Roster Analysis */
 .roster-analysis {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -261,7 +255,6 @@ nav a:hover, nav a.active {
   color: var(--accent);
 }
 
-/* Loading */
 .loading {
   display: none;
   flex-direction: column;
@@ -285,7 +278,6 @@ nav a:hover, nav a.active {
   100% { transform: rotate(360deg); }
 }
 
-/* Footer */
 footer {
   text-align: center;
   font-size: 14px;
@@ -298,7 +290,6 @@ footer a {
   font-weight: bold;
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   header {
     flex-direction: column;
@@ -355,7 +346,6 @@ footer a {
   font-size: 16px;
 }
 
-/* Team Selector */
 .team-selector {
   border: 2px solid var(--primary);
   padding: 25px;
@@ -415,7 +405,6 @@ footer a {
   transform: translate(-2px, -2px);
 }
 
-/* Team Overview */
 .team-overview {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -456,7 +445,6 @@ footer a {
   margin-left: 10px;
 }
 
-/* Stats Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -512,7 +500,6 @@ footer a {
   color: var(--accent);
 }
 
-/* Trends Visualization */
 .trends-visualization {
   border: 2px solid var(--primary);
   padding: 30px;

@@ -29,7 +29,6 @@ body {
   max-width: 1200px;
 }
 
-/* Header */
 header {
   display: flex;
   justify-content: space-between;
@@ -68,7 +67,6 @@ nav a:hover, nav a.active {
   color: var(--secondary);
 }
 
-/* Chart Header */
 .chart-header {
   text-align: center;
   margin-bottom: 30px;
@@ -84,7 +82,6 @@ nav a:hover, nav a.active {
   font-size: 16px;
 }
 
-/* Chart Controls */
 .chart-controls {
   border: 2px solid var(--primary);
   padding: 25px;
@@ -175,7 +172,6 @@ nav a:hover, nav a.active {
   transform: translate(-2px, -2px);
 }
 
-/* Selected Player */
 .selected-player {
   border: 2px solid var(--primary);
   padding: 20px;
@@ -210,7 +206,6 @@ nav a:hover, nav a.active {
   color: var(--secondary);
 }
 
-/* Chart Container */
 .chart-container {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -218,7 +213,6 @@ nav a:hover, nav a.active {
   box-shadow: var(--shadow);
 }
 
-/* Shot Summary */
 .shot-summary {
   display: flex;
   justify-content: space-around;
@@ -253,7 +247,6 @@ nav a:hover, nav a.active {
   color: var(--accent);
 }
 
-/* Court */
 .court-wrapper {
   display: flex;
   justify-content: center;
@@ -277,7 +270,6 @@ nav a:hover, nav a.active {
   opacity: 1 !important;
 }
 
-/* Heat Zones */
 .heat-zones {
   margin-top: 40px;
   padding-top: 30px;
@@ -341,7 +333,6 @@ nav a:hover, nav a.active {
   transition: width 0.5s ease;
 }
 
-/* Loading */
 .loading {
   display: none;
   flex-direction: column;
@@ -365,7 +356,6 @@ nav a:hover, nav a.active {
   100% { transform: rotate(360deg); }
 }
 
-/* Footer */
 footer {
   text-align: center;
   font-size: 14px;
@@ -378,7 +368,6 @@ footer a {
   font-weight: bold;
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   header {
     flex-direction: column;

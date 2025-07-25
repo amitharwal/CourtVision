@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Metrics - Court Vision</title>
+    <title>Advanced Metrics</title>
     <link rel="stylesheet" href="/static/css/advanced_metrics.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <div class="logo">Court Vision</div>
+            <div class="logo">Court Vision 🏀</div>
             <nav>
                 <a href="/">Home</a>
-                <a href="/compare">Compare</a>
                 <a href="/players">Players</a>
                 <a href="/team-trends">Teams</a>
                 <a href="/shot-charts">Shot Charts</a>
+                <a href="/compare">Compare</a>
+                <a href="/advanced-metrics" class="active">Adv. Metrics</a>
             </nav>
         </header>
 
@@ -41,11 +42,9 @@
                 <div class="control-group">
                     <label for="season-select">Season</label>
                     <select id="season-select">
-                        <option value="2023-24">2023-24</option>
-                        <option value="2022-23">2022-23</option>
-                        <option value="2021-22">2021-22</option>
-                        <option value="2020-21">2020-21</option>
-                        <option value="2019-20">2019-20</option>
+                        {% for season in seasons %}
+                            <option>{{ season }}</option>
+                        {% endfor %}
                     </select>
                 </div>
 
@@ -74,14 +73,12 @@
             </div>
 
             <div id="viz-content" class="viz-content">
-                <!-- Visualization content will appear here -->
             </div>
         </section>
 
         <section id="metrics-insights" class="metrics-insights" style="display: none;">
             <h3>Key Insights</h3>
             <div id="insights-grid" class="insights-grid">
-                <!-- Insights will appear here -->
             </div>
         </section>
 

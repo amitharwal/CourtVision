@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NBA Players - Court Vision</title>
+    <title>NBA Players</title>
     <link rel="stylesheet" href="/static/css/players.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <div class="logo">Court Vision</div>
+            <div class="logo">Court Vision 🏀</div>
             <nav>
                 <a href="/">Home</a>
-                <a href="/compare">Compare</a>
                 <a href="/players" class="active">Players</a>
                 <a href="/team-trends">Teams</a>
                 <a href="/shot-charts">Shot Charts</a>
+                <a href="/compare">Compare</a>
+                <a href="/advanced-metrics">Adv. Metrics</a>
             </nav>
         </header>
 
@@ -33,13 +34,13 @@
             <div class="filters">
                 <div class="filter-group">
                     <label for="season-filter">Season</label>
+                    <!-- Season -->
                     <select id="season-filter">
-                        <option value="2023-24">2023-24</option>
-                        <option value="2022-23">2022-23</option>
-                        <option value="2021-22">2021-22</option>
-                        <option value="2020-21">2020-21</option>
-                        <option value="2019-20">2019-20</option>
+                        {% for season in seasons %}
+                        <option value="{{ season }}" {% if loop.first %}selected{% endif %}>{{ season }}</option>
+                        {% endfor %}
                     </select>
+
                 </div>
 
                 <div class="filter-group">
@@ -49,16 +50,6 @@
                         {% for team in teams %}
                         <option value="{{ team.abbreviation }}">{{ team.full_name }}</option>
                         {% endfor %}
-                    </select>
-                </div>
-
-                <div class="filter-group">
-                    <label for="position-filter">Position</label>
-                    <select id="position-filter">
-                        <option value="all">All Positions</option>
-                        <option value="G">Guards</option>
-                        <option value="F">Forwards</option>
-                        <option value="C">Centers</option>
                     </select>
                 </div>
 
@@ -98,8 +89,7 @@
             </div>
 
             <div id="players-container" class="players-grid">
-                <!-- Player cards will be inserted here by JavaScript -->
-            </div>
+                </div>
         </section>
 
         <footer>
@@ -151,7 +141,6 @@
             const params = new URLSearchParams({
                 season: document.getElementById('season-filter').value,
                 team: document.getElementById('team-filter').value,
-                position: document.getElementById('position-filter').value,
                 sort_by: document.getElementById('sort-filter').value,
                 search: document.getElementById('search-input').value
             });
@@ -199,10 +188,18 @@
             players.forEach((player, index) => {
                 const card = document.createElement('div');
                 card.className = 'player-card';
+                const ppg = player.GP > 0
+                    ? (player.PTS / player.GP).toFixed(1)
+                    : '0.0';
+                const rpg = player.GP > 0
+                    ? (player.REB / player.GP).toFixed(1)
+                    : '0.0';
+                const apg = player.GP > 0
+                    ? (player.AST / player.GP).toFixed(1)
+                    : '0.0';
                 card.innerHTML = `
                     <div class="card-header">
                         <span class="player-rank">#${index + 1}</span>
-                        <span class="player-position">${player.POSITION}</span>
                     </div>
                     <div class="player-avatar">
                         <div class="avatar-placeholder">${player.PLAYER_NAME.split(' ').map(n => n[0]).join('')}</div>
@@ -212,19 +209,19 @@
                         <p class="team">${player.TEAM_ABBREVIATION} • ${player.AGE} years</p>
                     </div>
                     <div class="player-stats">
-                        <div class="main-stats">
-                            <div class="stat">
-                                <span class="stat-value">${player.PTS}</span>
-                                <span class="stat-label">PPG</span>
-                            </div>
-                            <div class="stat">
-                                <span class="stat-value">${player.REB}</span>
-                                <span class="stat-label">RPG</span>
-                            </div>
-                            <div class="stat">
-                                <span class="stat-value">${player.AST}</span>
-                                <span class="stat-label">APG</span>
-                            </div>
+                    <div class="main-stats">
+                    <div class="stat">
+                    <span class="stat-value">${ppg}</span>
+                        <span class="stat-label">PPG</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">${rpg}</span>
+                        <span class="stat-label">RPG</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">${apg}</span>
+                        <span class="stat-label">APG</span>
+                    </div>
                         </div>
                         <div class="shooting-stats">
                             <div class="shooting-bar">
@@ -249,7 +246,6 @@
                     </div>
                     <div class="card-actions">
                         <a href="/player/${player.PLAYER_ID}" class="detail-btn">View Details</a>
-                        <button class="compare-btn" onclick="addToCompare(${player.PLAYER_ID}, '${player.PLAYER_NAME}')">Compare</button>
                     </div>
                 `;
                 container.appendChild(card);
@@ -287,7 +283,6 @@
                                 <a href="/player/${player.PLAYER_ID}">${player.PLAYER_NAME}</a>
                             </td>
                             <td>${player.TEAM_ABBREVIATION}</td>
-                            <td>${player.POSITION}</td>
                             <td>${player.AGE}</td>
                             <td>${player.GP}</td>
                             <td>${player.MIN}</td>
@@ -298,7 +293,9 @@
                             <td>${player.FG3_PCT}%</td>
                             <td>${player.TS_PCT}%</td>
                             <td>
-                                <button class="small-btn" onclick="addToCompare(${player.PLAYER_ID}, '${player.PLAYER_NAME}')">Compare</button>
+                                <div class="card-actions">
+                                    <a href="/player/${player.PLAYER_ID}" class="small-btn">View Details</a>
+                                </div>
                             </td>
                         </tr>
                     `).join('')}
@@ -308,9 +305,8 @@
         }
 
         function clearFilters() {
-            document.getElementById('season-filter').value = '2023-24';
+            document.getElementById('season-filter').value = "{{ seasons[0] }}";
             document.getElementById('team-filter').value = 'all';
-            document.getElementById('position-filter').value = 'all';
             document.getElementById('sort-filter').value = 'PTS';
             document.getElementById('search-input').value = '';
             loadPlayers();
@@ -326,7 +322,6 @@
             const params = new URLSearchParams({
                 season: document.getElementById('season-filter').value,
                 team: document.getElementById('team-filter').value,
-                position: document.getElementById('position-filter').value,
                 sort_by: document.getElementById('sort-filter').value
             });
 

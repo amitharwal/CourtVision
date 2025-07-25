@@ -3,42 +3,55 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Court Vision</title>
+    <title>Court Vision 🏀</title>
     <link rel="stylesheet" href="/static/css/home.css">
   </head>
 <body>
   <div class="container">
     <header>
-      <div class="logo">Court Vision</div>
+      <div class="logo">Court Vision 🏀</div>
       <nav>
         <a href="/" class="active">Home</a>
         <a href="/players">Players</a>
         <a href="/team-trends">Teams</a>
         <a href="/shot-charts">Shot Charts</a>
         <a href="/compare">Compare</a>
-        <a href="/advanced-metrics">Metrics</a>
+        <a href="/advanced-metrics">Adv. Metrics</a>
       </nav>
     </header>
 
     <section class="hero">
-      <h2>NBA Analytics Dashboard</h2>
-      <p>Real-time NBA statistics, shot charts, and advanced analytics at your fingertips.</p>
-      <button id="load-data">Load Today's Leaders</button>
+      <h2>Court Vision 🏀</h2>
+      <p>Enjoy the game. Find players, teams, shot charts, and analytical tools—powered by real-time data.</p>
+      <button id="load-data">Today's Games List</button>
     </section>
 
-    <section class="visualization">
-      <h3>League Leaders</h3>
-      <div class="stat-selector">
-        <button class="stat-btn active" data-stat="PTS">Points</button>
-        <button class="stat-btn" data-stat="REB">Rebounds</button>
-        <button class="stat-btn" data-stat="AST">Assists</button>
-        <button class="stat-btn" data-stat="STL">Steals</button>
-        <button class="stat-btn" data-stat="BLK">Blocks</button>
-      </div>
-      <div id="chart-container">
-        <p id="loading-message" style="text-align: center; padding: 20px;">Select a stat category above to view leaders</p>
-        <div id="scorers-list" style="display: none;"></div>
-      </div>
+    <section id="chart-container">
+      <h3>Today's Games</h3>
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Matchup</th>
+            <th>Time</th>
+            <th>Arena</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if games_today %}
+            {% for game in games_today %}
+              <tr>
+                <td class="matchup">{{ game.matchup }}</td>
+                <td>{{ game.game_time }}</td>
+                <td>{{ game.arena }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="3">No games scheduled today.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
     </section>
 
     <section class="quick-stats">
@@ -54,11 +67,11 @@
         </div>
         <div class="stat-card">
           <h4>Current Season</h4>
-          <p class="stat-number">2023-24</p>
+          <p class="stat-number">2024-25</p>
         </div>
         <div class="stat-card">
           <h4>Games Today</h4>
-          <p class="stat-number" id="games-today">Loading...</p>
+          <div class="stat-number">{{ games_count }}</div>
         </div>
       </div>
     </section>
@@ -146,106 +159,24 @@
     <footer>
       <p>© 2025 Court Vision • Built with Flask & NBA API</p>
       <p class="footer-links">
-        <a href="https://github.com">GitHub</a> •
-        <a href="/api/docs">API Docs</a> •
+        <a href="https://github.com/amitharwal/CourtVision">GitHub</a> •
+        <a href="https://github.com/swar/nba_api">API Docs</a> •
         <a href="/about">About</a>
       </p>
     </footer>
   </div>
 
   <script>
-    let currentStat = 'PTS';
+    const currentSeason = "2024-25";
 
-    // Initialize
     document.addEventListener('DOMContentLoaded', function() {
-      loadLeaders('PTS');
       loadQuickStats();
-      setupEventListeners();
+      document.getElementById('load-data').addEventListener('click', () => location.reload());
     });
 
-    function setupEventListeners() {
-      // Stat selector buttons
-      document.querySelectorAll('.stat-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          document.querySelectorAll('.stat-btn').forEach(b => b.classList.remove('active'));
-          this.classList.add('active');
-          currentStat = this.dataset.stat;
-          loadLeaders(currentStat);
-        });
-      });
-
-      // Load data button
-      document.getElementById('load-data').addEventListener('click', () => loadLeaders(currentStat));
-    }
-
-    async function loadLeaders(stat) {
-      document.getElementById('loading-message').textContent = 'Loading data...';
-      document.getElementById('loading-message').style.display = 'block';
-      document.getElementById('scorers-list').style.display = 'none';
-
-      try {
-        const response = await fetch(`/api/players?sort_by=${stat}&season=2023-24`);
-        const data = await response.json();
-
-        if (data.success) {
-          document.getElementById('loading-message').style.display = 'none';
-          document.getElementById('scorers-list').style.display = 'block';
-
-          const top10 = data.data.slice(0, 10);
-
-          let statLabel = {
-            'PTS': 'PPG',
-            'REB': 'RPG',
-            'AST': 'APG',
-            'STL': 'SPG',
-            'BLK': 'BPG'
-          }[stat];
-
-          let html = '<div class="table-container"><table>';
-          html += '<thead><tr>';
-          html += '<th>Rank</th>';
-          html += '<th>Player</th>';
-          html += '<th>Team</th>';
-          html += '<th>GP</th>';
-          html += `<th class="highlight">${statLabel}</th>`;
-          html += '<th>MIN</th>';
-          html += '<th>FG%</th>';
-          html += '</tr></thead><tbody>';
-
-          top10.forEach((player, index) => {
-            html += `<tr>
-                      <td class="rank">${index + 1}</td>
-                      <td class="player-name">
-                        <a href="/player/${player.PLAYER_ID}">
-                          ${player.PLAYER_NAME}
-                        </a>
-                      </td>
-                      <td>${player.TEAM_ABBREVIATION}</td>
-                      <td>${player.GP}</td>
-                      <td class="stat-highlight">${player[stat]}</td>
-                      <td>${player.MIN}</td>
-                      <td>${player.FG_PCT}%</td>
-                    </tr>`;
-          });
-
-          html += '</tbody></table></div>';
-          document.getElementById('scorers-list').innerHTML = html;
-
-          // Update total players count
-          document.getElementById('total-players').textContent = data.count || '500+';
-        } else {
-          document.getElementById('loading-message').textContent = 'Error loading data: ' + data.error;
-        }
-      } catch (error) {
-        document.getElementById('loading-message').textContent = 'Error: Could not connect to server';
-      }
-    }
-
     async function loadQuickStats() {
-      // Simulate loading quick stats - in production, these would come from API
       setTimeout(() => {
         document.getElementById('total-players').textContent = '572';
-        document.getElementById('games-today').textContent = Math.floor(Math.random() * 15) + 1;
       }, 1000);
     }
   </script>

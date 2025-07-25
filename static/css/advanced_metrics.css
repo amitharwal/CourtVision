@@ -31,7 +31,6 @@ body {
   max-width: 1200px;
 }
 
-/* Header */
 header {
   display: flex;
   justify-content: space-between;
@@ -63,14 +62,23 @@ nav a {
   background-color: var(--secondary);
 }
 
-nav a:hover {
-  box-shadow: 3px 3px 0px var(--primary);
+nav a {
+  text-decoration: none;
+  color: var(--primary);
+  font-weight: bold;
+  border: 2px solid var(--primary);
+  padding: 8px 16px;
+  transition: all 0.3s;
+  background-color: var(--secondary);
+}
+
+nav a:hover, nav a.active {
+  box-shadow: 4px 4px 0 var(--primary);
   transform: translate(-2px, -2px);
   background-color: var(--accent);
   color: var(--secondary);
 }
 
-/* Metrics Header */
 .metrics-header {
   text-align: center;
   margin-bottom: 30px;
@@ -86,7 +94,6 @@ nav a:hover {
   font-size: 16px;
 }
 
-/* Metrics Controls */
 .metrics-controls {
   border: 2px solid var(--primary);
   padding: 25px;
@@ -147,7 +154,6 @@ nav a:hover {
   transform: translate(-2px, -2px);
 }
 
-/* Metric Explanation */
 .metric-explanation {
   border: 2px solid var(--primary);
   padding: 25px;
@@ -177,7 +183,6 @@ nav a:hover {
   margin-top: 15px;
 }
 
-/* Metrics Visualization */
 .metrics-visualization {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -219,7 +224,6 @@ nav a:hover {
   min-height: 400px;
 }
 
-/* Leaders Grid */
 .leaders-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -288,7 +292,6 @@ nav a:hover {
   border-top: 1px solid #e0e0e0;
 }
 
-/* Distribution Chart */
 .distribution-chart {
   padding: 20px;
 }
@@ -368,7 +371,6 @@ nav a:hover {
   color: var(--accent);
 }
 
-/* Position Comparison */
 .position-comparison {
   padding: 20px;
 }
@@ -424,7 +426,6 @@ nav a:hover {
   font-size: 14px;
 }
 
-/* Metrics Insights */
 .metrics-insights {
   border: 2px solid var(--primary);
   padding: 30px;
@@ -473,7 +474,6 @@ nav a:hover {
   font-size: 20px;
 }
 
-/* Loading */
 .loading {
   display: none;
   flex-direction: column;
@@ -497,7 +497,6 @@ nav a:hover {
   100% { transform: rotate(360deg); }
 }
 
-/* Footer */
 footer {
   text-align: center;
   font-size: 14px;
@@ -510,7 +509,6 @@ footer a {
   font-weight: bold;
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   header {
     flex-direction: column;
