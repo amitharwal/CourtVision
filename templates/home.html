@@ -67,7 +67,7 @@
         </div>
         <div class="stat-card">
           <h4>Current Season</h4>
-          <p class="stat-number">2024-25</p>
+          <p class="stat-number">{{ seasons[0] }}</p>
         </div>
         <div class="stat-card">
           <h4>Games Today</h4>
@@ -167,18 +167,26 @@
   </div>
 
   <script>
-    const currentSeason = "2024-25";
+    const currentSeason = "{{ seasons[0] }}";
 
-    document.addEventListener('DOMContentLoaded', function() {
-      loadQuickStats();
-      document.getElementById('load-data').addEventListener('click', () => location.reload());
-    });
+  document.addEventListener('DOMContentLoaded', function() {
+    loadQuickStats();
+    document.getElementById('load-data').addEventListener('click', () => location.reload());
+  });
 
-    async function loadQuickStats() {
-      setTimeout(() => {
-        document.getElementById('total-players').textContent = '572';
-      }, 1000);
+  async function loadQuickStats() {
+    try {
+      const r = await fetch('/test-api');
+      const j = await r.json();
+      if (j.success) {
+        document.getElementById('total-players').textContent = j.players_count;
+      } else {
+        document.getElementById('total-players').textContent = '—';
+      }
+    } catch {
+      document.getElementById('total-players').textContent = '—';
     }
+  }
   </script>
 </body>
 </html>

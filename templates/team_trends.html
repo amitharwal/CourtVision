@@ -167,17 +167,17 @@
         return;
     }
 
-    // Any exception here will be uncaught and show up as a red error in the console.
     teamData = data.stats;
     console.log('About to render with teamData:', teamData);
-    displayTeamOverview();
-    displayTrends();
-    loadRosterAnalysis();
 
     // Reveal the sections
     document.getElementById('team-overview').style.display = 'block';
     document.getElementById('trends-visualization').style.display = 'block';
     document.getElementById('roster-analysis').style.display = 'block';
+
+    displayTeamOverview();
+    displayTrends();
+    loadRosterAnalysis();
 
     // Hide spinner
     showLoading(false);
@@ -272,60 +272,26 @@
   generateMonthlyChart(currentTeamId, document.getElementById('season-select').value);
 }
 
-
     async function generateMonthlyChart(teamId, season) {
-        const months    = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
-        const monthNums = [ 10 ,  11 ,  12 ,   1  ,   2  ,   3  ,   4   ];
-        const monthLabels = [];
-        const winPercentages = [];
-
-    for (let i = 0; i < months.length; i++) {
-        const monthNum = monthNums[i];
-
-        try {
-            const response = await fetch(
-               `/api/team-monthly?team_id=${teamId}&season=${season}&month=${monthNum}`
-            );
-            const data = await response.json();
-            if (data.success) {
-                const wins      = data.wins;
-                const losses    = data.losses;
-                const totalGames = wins + losses;
-                const winPct    = totalGames > 0 ? (wins / totalGames) * 100 : 0;
-
-                monthLabels.push(months[i]);
-                winPercentages.push(parseFloat(winPct.toFixed(1)));
-            } else {
-                console.error(`Error fetching data for month ${monthNum}:`, data.error);
-            }
-        } catch (err) {
-            console.error(`Exception for month ${monthNum}:`, err);
-        }
+  const resp = await fetch(`/api/team-monthly-series?team_id=${teamId}&season=${encodeURIComponent(season)}`);
+  const data = await resp.json();
+  if (!data.success) {
+    console.error('monthly-series error', data.error);
+    return;
+  }
+  const ctx = document.getElementById('monthlyChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.months,
+      datasets: [{ label: 'Win %', data: data.win_pct, backgroundColor: '#3e95cd' }]
+    },
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: true, max: 100 } }
     }
-
-        const ctx = document.getElementById('monthlyChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-
-                labels: monthLabels,
-                datasets: [{
-                    label: 'Win %',
-                    data: winPercentages,
-                    backgroundColor: '#3e95cd'
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100
-                    }
-                }
-            }
-        });
-    }
+  });
+}
 
     async function loadRosterAnalysis() {
     const content = document.getElementById('roster-content');
