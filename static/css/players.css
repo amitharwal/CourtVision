@@ -111,6 +111,7 @@ nav a:hover, nav a.active {
 
 .search-bar input {
   flex: 1;
+  min-width: 0;
   padding: 12px;
   border: 2px solid var(--primary);
   font-size: 16px;

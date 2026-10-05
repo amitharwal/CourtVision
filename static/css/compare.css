@@ -229,6 +229,7 @@ nav a:hover, nav a.active {
 
 .season-selector {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 15px;
   margin-bottom: 30px;
@@ -412,14 +413,41 @@ footer a {
     justify-content: center;
   }
 
-  .comparison-header-row,
-  .stat-row {
-    grid-template-columns: 120px repeat(2, 1fr);
+  /* Scroll the comparison sideways instead of hiding players 3 and 4 */
+  .comparison-section {
+    padding: 16px;
   }
 
-  .player-header-cell:nth-child(n+4),
-  .stat-value-cell:nth-child(n+4) {
-    display: none;
+  .comparison-grid {
+    overflow-x: auto;
+  }
+
+  /* Every row (and category bar) gets the same fixed width so columns line up;
+     --players is set on .comparison-grid by the page script. */
+  .comparison-header-row,
+  .stat-row,
+  .category-header {
+    width: calc(100px + var(--players, 4) * 100px);
+  }
+
+  .comparison-header-row,
+  .stat-row {
+    grid-template-columns: 100px repeat(var(--players, 4), 100px);
+  }
+
+  .player-header-cell,
+  .stat-value-cell,
+  .stat-label-cell {
+    padding: 10px 8px;
+    overflow-wrap: anywhere;
+  }
+
+  .comparison-header-row > :first-child,
+  .stat-label-cell {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: var(--secondary);
   }
 
   .selected-players {
