@@ -1,24 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Player Explorer</title>
-  <link rel="stylesheet" href="/static/css/players.css">
-</head>
-<body>
-  <div class="container">
-    <header>
-      <div class="logo">Court Vision 🏀</div>
-      <nav>
-        <a href="/">Home</a>
-        <a href="/players" class="active">Players</a>
-        <a href="/team-trends">Teams</a>
-        <a href="/shot-charts">Shot Charts</a>
-        <a href="/compare">Compare</a>
-        <a href="/advanced-metrics">Adv. Metrics</a>
-      </nav>
-    </header>
+{% extends "base.html" %}
+
+{% block title %}Player Explorer{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="/static/css/players.css">
+{% endblock %}
+
+{% block content %}
 
     <section class="filters-section">
       <div class="section-header">
@@ -45,12 +33,9 @@
 
       <p class="player-count" id="hint">Tip: Start typing—results appear instantly.</p>
     </section>
+{% endblock %}
 
-    <footer>
-      © 2025 Court Vision. Built with raw code and real data. <a href="/privacy_policy">Privacy Policy</a>
-    </footer>
-  </div>
-
+{% block scripts %}
   <script>
     const input = document.getElementById('search-input');
     const btn = document.getElementById('search-btn');
@@ -96,5 +81,4 @@
     btn.addEventListener('click', doSearch);
     input.addEventListener('keypress', e => { if (e.key === 'Enter') doSearch(); });
   </script>
-</body>
-</html>
+{% endblock %}
