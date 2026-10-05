@@ -156,6 +156,7 @@
 }
 
 .category-header {
+  font-family: var(--font-display);
   grid-column: 1 / -1;
   padding: var(--space-3) var(--space-4);
   background-color: var(--primary);

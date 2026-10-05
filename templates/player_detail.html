@@ -366,7 +366,7 @@
     const labels = gameLog.map(g => `${g.GAME_DATE.slice(5)} ${g.MATCHUP.slice(-3)}`);
 
     if (gameLogChart) gameLogChart.destroy();
-    Chart.defaults.font.family = "'Courier New', monospace";
+    Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
     gameLogChart = new Chart(document.getElementById('gamelog-chart'), {
       data: {
         labels,

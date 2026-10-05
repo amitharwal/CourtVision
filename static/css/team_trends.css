@@ -16,6 +16,7 @@
 }
 
 .team-record {
+  font-family: var(--font-display);
   font-size: var(--fs-xl);
   font-weight: bold;
   font-variant-numeric: tabular-nums;

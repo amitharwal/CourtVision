@@ -20,8 +20,10 @@
   --warning: #FFC107;         /* play-in seeds */
 
   /* Type */
-  --font-body: 'Courier New', monospace;
-  --font-display: 'Courier New', monospace;
+  /* Space Mono for brand moments (logo, titles, nav, buttons, big numbers);
+     Space Grotesk for reading (body text, labels, tables). */
+  --font-body: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Space Mono', 'Courier New', monospace;
   --fs-xs: 12px;
   --fs-sm: 14px;
   --fs-md: 16px;
@@ -54,6 +56,9 @@
 
 body {
   font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   background-color: var(--light-gray);
   color: var(--primary);
   display: flex;
@@ -107,6 +112,8 @@ nav {
 }
 
 nav a {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
   text-decoration: none;
   color: var(--primary);
   font-weight: bold;
@@ -177,6 +184,7 @@ footer a {
 }
 
 .card-title {
+  font-family: var(--font-display);
   font-size: var(--fs-md);
   padding-bottom: var(--space-2);
   margin-bottom: var(--space-2);
@@ -185,6 +193,7 @@ footer a {
 
 /* -------------------------------------------------------------- Buttons */
 .btn {
+  font-family: var(--font-display);
   display: inline-block;
   padding: 10px 24px;
   background-color: var(--accent);
@@ -272,6 +281,7 @@ input:focus {
 }
 
 .tab {
+  font-family: var(--font-display);
   padding: 10px 20px;
   border: var(--border);
   border-bottom: none;
@@ -307,6 +317,7 @@ input:focus {
 }
 
 .data-table th {
+  font-family: var(--font-display);
   background-color: var(--primary);
   color: var(--secondary);
   padding: 10px 12px;
@@ -477,6 +488,7 @@ input:focus {
 
 /* ---------------------------------------------------------------- Badge */
 .badge {
+  font-family: var(--font-display);
   display: inline-block;
   border: var(--border);
   padding: var(--space-1) 10px;
