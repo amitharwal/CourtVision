@@ -381,7 +381,8 @@ def api_roster_analysis(team_id):
                 "top_scorer": build_player_dict(top_scorer, "PTS"),
                 "top_rebounder": build_player_dict(top_rebounder, "REB"),
                 "top_playmaker": build_player_dict(top_playmaker, "AST"),
-                "most_efficient": build_player_dict(most_efficient, "EFF"),
+                # build_player_dict divides by GP, so pass the season total (EFF is already per game)
+                "most_efficient": build_player_dict(most_efficient, "EFF_RAW"),
             }
         )
 

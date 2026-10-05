@@ -223,6 +223,19 @@ class GameLogApiTest(unittest.TestCase):
         self.assertEqual(data["games"], [])
 
 
+class RosterAnalysisApiTest(unittest.TestCase):
+    def test_most_efficient_is_per_game(self):
+        nba_client._CACHE.clear()
+        roster = pd.DataFrame([{"PLAYER_NAME": "Star", "GP": 10, "PTS": 300, "REB": 50, "AST": 60,
+                                "STL": 10, "BLK": 5, "FGA": 200, "FGM": 100, "FTA": 50, "FTM": 40, "TOV": 25}])
+        endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), roster]))
+        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint):
+            data = app_module.app.test_client().get("/api/roster-analysis/1?season=2024-25").get_json()
+        # (300+50+60+10+5) - ((200-100) + (50-40) + 25) = 290 over 10 games
+        self.assertEqual(data["most_efficient"]["stat"], 29.0)
+        self.assertEqual(data["top_scorer"]["stat"], 30.0)
+
+
 class StandingsApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
