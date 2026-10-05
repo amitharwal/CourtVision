@@ -436,6 +436,8 @@ def get_players():
             "AST",
             "STL",
             "BLK",
+            "FGA",
+            "FTA",
             "FG_PCT",
             "FG3_PCT",
             "FT_PCT",
@@ -473,7 +475,7 @@ def get_players():
                 p["REB_PCT"] = round(p["REB_PCT"], 1)
             if "PIE" in p:
                 p["PIE"] = round(p["PIE"], 1)
-            for stat in ["MIN", "PTS", "REB", "AST", "STL", "BLK", "PF"]:
+            for stat in ["MIN", "PTS", "REB", "AST", "STL", "BLK", "PF", "FGA", "FTA"]:
                 if stat in p:
                     p[stat] = round(p[stat], 1)
 

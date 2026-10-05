@@ -564,3 +564,7 @@ footer a {
   padding: 40px 20px;
   font-weight: bold;
 }
+
+[hidden] {
+  display: none !important;
+}
