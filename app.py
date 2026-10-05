@@ -368,7 +368,11 @@ def api_roster_analysis(team_id):
             gp = row.get("GP") or 1
             total = row.get(stat_col, 0)
             per_game = total / gp
-            return {"name": row.get("PLAYER_NAME", "N/A"), "stat": round(per_game, 1)}
+            return {
+                "name": row.get("PLAYER_NAME", "N/A"),
+                "player_id": int(row["PLAYER_ID"]) if row.get("PLAYER_ID") is not None else None,
+                "stat": round(per_game, 1),
+            }
 
         top_scorer = stats.sort_values("PTS", ascending=False).iloc[0] if not stats.empty else None
         top_rebounder = stats.sort_values("REB", ascending=False).iloc[0] if not stats.empty else None
@@ -430,6 +434,7 @@ def get_players():
         display_columns = [
             "PLAYER_ID",
             "PLAYER_NAME",
+            "TEAM_ID",
             "TEAM_ABBREVIATION",
             "POSITION",
             "AGE",

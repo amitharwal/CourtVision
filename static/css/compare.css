@@ -16,19 +16,6 @@
   background-color: var(--light-gray);
 }
 
-.player-number {
-  width: 28px;
-  height: 28px;
-  background-color: var(--accent);
-  color: var(--secondary);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: var(--fs-sm);
-}
-
 .player-name {
   font-weight: bold;
   flex: 1;
@@ -143,6 +130,10 @@
 .player-header-cell:last-child,
 .stat-value-cell:last-child {
   border-right: none;
+}
+
+.player-header-cell .avatar {
+  margin-bottom: var(--space-2);
 }
 
 .player-header-cell .player-name {

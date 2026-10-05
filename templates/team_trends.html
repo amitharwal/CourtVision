@@ -41,7 +41,10 @@
 
     <section id="team-overview" class="panel" style="display: none;">
         <div class="overview-header">
-            <h3 id="team-name"></h3>
+            <div class="team-title">
+                <img id="team-logo" class="team-logo" alt="" width="56" height="56" hidden>
+                <h3 id="team-name"></h3>
+            </div>
             <div id="team-record" class="team-record"></div>
         </div>
 
@@ -178,6 +181,10 @@
     function displayTeamOverview() {
         const teamName = document.querySelector('#team-select option:checked').textContent;
         document.getElementById('team-name').textContent = teamName;
+        const logo = document.getElementById('team-logo');
+        logo.onerror = () => { logo.hidden = true; };
+        logo.src = NbaMedia.teamLogoUrl(currentTeamId);
+        logo.hidden = false;
         document.getElementById('team-record').innerHTML = `
     <span class="wins">${teamData.W} W</span> -
     <span class="losses">${teamData.L} L</span>
@@ -301,34 +308,22 @@
 
     content.innerHTML = `
         <div class="roster-grid">
+            ${[
+                ['Top Scorer', data.top_scorer, 'PPG'],
+                ['Top Rebounder', data.top_rebounder, 'RPG'],
+                ['Top Playmaker', data.top_playmaker, 'APG'],
+                ['Most Efficient', data.most_efficient, 'EFF'],
+            ].map(([title, p, unit]) => `
             <div class="card roster-card">
-                <h4>Top Scorer</h4>
+                <h4>${title}</h4>
                 <div class="player-highlight">
-                    <span class="player-name">${data.top_scorer.name}</span>
-                    <span class="player-stat">${data.top_scorer.stat.toFixed(1)} PPG</span>
+                    ${NbaMedia.avatarHtml(p.player_id, p.name, 72)}
+                    ${p.player_id
+                        ? `<a class="player-name" href="/player/${p.player_id}">${p.name}</a>`
+                        : `<span class="player-name">${p.name}</span>`}
+                    <span class="player-stat">${p.stat.toFixed(1)} ${unit}</span>
                 </div>
-            </div>
-            <div class="card roster-card">
-                <h4>Top Rebounder</h4>
-                <div class="player-highlight">
-                    <span class="player-name">${data.top_rebounder.name}</span>
-                    <span class="player-stat">${data.top_rebounder.stat.toFixed(1)} RPG</span>
-                </div>
-            </div>
-            <div class="card roster-card">
-                <h4>Top Playmaker</h4>
-                <div class="player-highlight">
-                    <span class="player-name">${data.top_playmaker.name}</span>
-                    <span class="player-stat">${data.top_playmaker.stat.toFixed(1)} APG</span>
-                </div>
-            </div>
-            <div class="card roster-card">
-                <h4>Most Efficient</h4>
-                <div class="player-highlight">
-                    <span class="player-name">${data.most_efficient.name}</span>
-                    <span class="player-stat">${data.most_efficient.stat.toFixed(1)} EFF</span>
-                </div>
-            </div>
+            </div>`).join('')}
         </div>
     `;
 }

@@ -98,7 +98,7 @@
           td.className = 'team-col';
           const a = document.createElement('a');
           a.href = `/team-trends?team_id=${r.team_id}&season=${encodeURIComponent(season)}`;
-          a.textContent = r.team;
+          a.append(NbaMedia.teamLogo(r.team_id, 24), r.team);
           td.appendChild(a);
         } else {
           td.textContent = formatCell(key, r[key]);

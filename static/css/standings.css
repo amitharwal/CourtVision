@@ -70,6 +70,9 @@ tr.playin td:first-child {
 }
 
 .conference td.team-col a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-weight: bold;
   text-decoration: none;
 }

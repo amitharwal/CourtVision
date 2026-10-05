@@ -58,7 +58,11 @@
 }
 
 .leader-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   margin-bottom: var(--space-3);
+  padding-right: var(--space-6);  /* clear the rank in the corner */
 }
 
 .player-name {
@@ -67,6 +71,9 @@
 }
 
 .player-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
   font-size: var(--fs-sm);
 }

@@ -63,7 +63,10 @@
 
         <section id="selected-player" class="panel selected-player" style="display: none;">
             <div class="player-info-bar">
-                <h3 id="player-name"></h3>
+                <div class="player-title">
+                    <span id="sc-avatar" class="avatar"></span>
+                    <h3 id="player-name"></h3>
+                </div>
                 <button id="clear-selection" class="btn btn-secondary btn-sm">Clear Selection</button>
             </div>
         </section>
@@ -191,6 +194,9 @@
             document.getElementById('player-results').style.display = 'none';
             document.getElementById('selected-player').style.display = 'block';
             document.getElementById('player-name').textContent = name;
+            const avatar = NbaMedia.avatar(id, name, 48);
+            avatar.id = 'sc-avatar';
+            document.getElementById('sc-avatar').replaceWith(avatar);
         }
 
         function clearSelection() {

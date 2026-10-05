@@ -11,6 +11,12 @@
   gap: var(--space-4);
 }
 
+.player-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .player-info-bar h3 {
   font-family: var(--font-display);
   font-size: var(--fs-xl);

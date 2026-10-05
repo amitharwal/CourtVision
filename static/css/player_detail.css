@@ -39,22 +39,6 @@
   padding: var(--space-4);
 }
 
-.player-avatar-large {
-  width: 96px;
-  aspect-ratio: 1 / 1;
-  flex: 0 0 96px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  overflow: hidden;
-  font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: bold;
-  background-color: var(--accent);
-  color: var(--secondary);
-  border: var(--border);
-}
-
 .player-card-body {
   min-width: 0;
 }
@@ -66,6 +50,9 @@
 }
 
 .player-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--fs-sm);
   color: var(--muted);
   margin-bottom: var(--space-2);

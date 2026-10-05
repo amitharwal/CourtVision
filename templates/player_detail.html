@@ -15,7 +15,7 @@
     <!-- LEFT -->
     <aside class="player-sidebar" id="sidebar">
       <div class="panel player-card" id="player-card">
-        <div class="player-avatar-large">..</div>
+        <span class="avatar" id="p-avatar" style="--avatar-size: 96px"></span>
         <div class="player-card-body">
           <h1 id="p-name">Loading…</h1>
           <div class="player-meta" id="p-meta"></div>
@@ -121,11 +121,13 @@
   }
 
   function renderHeader(info) {
-    const initials = (info.DISPLAY_FIRST_LAST || 'NA').split(/\s+/).map(n => n[0]).join('');
-    document.querySelector('#player-card .player-avatar-large').textContent = initials;
+    const avatar = NbaMedia.avatar(playerId, info.DISPLAY_FIRST_LAST, 96);
+    avatar.id = 'p-avatar';
+    document.getElementById('p-avatar').replaceWith(avatar);
     document.getElementById('p-name').textContent = info.DISPLAY_FIRST_LAST || 'Unknown Player';
-    document.getElementById('p-meta').textContent =
-      `${info.TEAM_NAME || 'Free Agent'} • #${info.JERSEY || 'N/A'} • ${info.POSITION || 'N/A'}`;
+    const meta = document.getElementById('p-meta');
+    meta.replaceChildren(`${info.TEAM_NAME || 'Free Agent'} • #${info.JERSEY || 'N/A'} • ${info.POSITION || 'N/A'}`);
+    if (info.TEAM_ID) meta.prepend(NbaMedia.teamLogo(info.TEAM_ID, 18));
     document.getElementById('p-phys').innerHTML =
       `<span>Height: ${info.HEIGHT || 'N/A'}</span>
        <span>Weight: ${info.WEIGHT || 'N/A'} lbs</span>

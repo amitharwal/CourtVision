@@ -62,7 +62,7 @@
         const list = data.players || [];
         tbody.innerHTML = list.map(p => `
           <tr>
-            <td>${p.name}</td>
+            <td><span class="player-cell">${NbaMedia.avatarHtml(p.id, p.name, 36)}${p.name}</span></td>
             <td>${p.is_active ? 'Active' : 'Retired'}</td>
             <td><a class="btn btn-secondary btn-sm" href="/player/${p.id}">Open</a></td>
           </tr>

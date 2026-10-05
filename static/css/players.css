@@ -29,3 +29,9 @@
   color: var(--muted);
   font-size: var(--fs-sm);
 }
+
+.player-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}

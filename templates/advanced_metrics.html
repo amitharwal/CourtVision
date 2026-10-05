@@ -276,8 +276,14 @@
                         <div class="card leader-card ${player[currentMetric] >= metric.eliteValue ? 'elite' : player[currentMetric] >= metric.goodValue ? 'good' : ''}">
                             <div class="rank">#${index + 1}</div>
                             <div class="leader-info">
-                                <div class="player-name">${player.PLAYER_NAME}</div>
-                                <div class="player-team">${player.TEAM_ABBREVIATION}</div>
+                                ${NbaMedia.avatarHtml(player.PLAYER_ID, player.PLAYER_NAME, 52)}
+                                <div>
+                                    <div class="player-name">${player.PLAYER_NAME}</div>
+                                    <div class="player-team">
+                                        ${player.TEAM_ID ? `<img class="team-logo" src="${NbaMedia.teamLogoUrl(player.TEAM_ID)}" alt="" width="16" height="16" loading="lazy" onerror="this.remove()">` : ''}
+                                        ${player.TEAM_ABBREVIATION}
+                                    </div>
+                                </div>
                             </div>
                             <div class="metric-value">${formatMetricValue(currentMetric, player[currentMetric])}</div>
                             <div class="supporting-stats">

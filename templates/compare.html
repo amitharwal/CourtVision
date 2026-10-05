@@ -139,7 +139,7 @@
     }
     c.innerHTML = selectedPlayers.map((p,i) => `
       <div class="selected-player">
-        <span class="player-number">${i+1}</span>
+        ${NbaMedia.avatarHtml(p.id, p.name, 32)}
         <span class="player-name">${p.name}</span>
         <button class="remove-btn" onclick="removePlayer(${p.id})">×</button>
       </div>
@@ -224,6 +224,7 @@
       const st = playerStats[p.id] || {};
       html += `
         <div class="player-header-cell">
+          ${NbaMedia.avatarHtml(p.id, p.name, 64)}
           <div class="player-name">${p.name}</div>
           <div class="player-team">${st.TEAM_ABBREVIATION === 'TOT' ? 'Multiple teams' : (st.TEAM_ABBREVIATION || 'N/A')}</div>
         </div>`;
