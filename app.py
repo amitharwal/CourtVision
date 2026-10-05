@@ -739,6 +739,16 @@ def export_players():
 @app.route("/api/search-players")
 def search_players():
     try:
+        # ?ids=2544,201939 looks players up by id (used to restore shared links)
+        ids = request.args.get("ids")
+        if ids:
+            found = []
+            for pid in ids.split(",")[:10]:
+                p = players.find_player_by_id(int(pid)) if pid.strip().isdigit() else None
+                if p:
+                    found.append({"id": p["id"], "name": p["full_name"], "is_active": p["is_active"]})
+            return jsonify({"success": True, "players": found})
+
         query = request.args.get("q", "").lower()
         all_players = players.get_players()
         matching = [

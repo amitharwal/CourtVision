@@ -11,6 +11,9 @@ An NBA analytics web app built with Flask and [nba_api](https://github.com/swar/
 - **Advanced Metrics**: TS%, usage, assist %, rebound % and PIE leaders, distributions and position averages
 - **Export**: download league player stats as CSV
 
+Every page keeps its selections in the URL (player, season, filters), so a view can be
+bookmarked or shared and reloads exactly as it was.
+
 Season data covers 1996-97 onward, the range the NBA's stats endpoints support.
 
 ## Running locally

@@ -65,11 +65,18 @@
       .addEventListener('change', loadComparison);
   }
 
-  function loadSavedPlayers() {
-    const saved = JSON.parse(localStorage.getItem('compareList') || '[]');
+  // ?players=2544,201939&season=2024-25&type=playoffs overrides the saved list
+  async function loadSavedPlayers() {
+    UrlState.apply('season-select', 'season');
+    UrlState.apply('season-type', 'type');
+    const ids = (UrlState.get('players') || '').split(',').map(Number).filter(Boolean).slice(0, 4);
+    const saved = ids.length
+      ? (await UrlState.playerNames(ids)).map(p => ({ id: p.id, name: p.name }))
+      : JSON.parse(localStorage.getItem('compareList') || '[]');
     saved.forEach(p => {
       if (selectedPlayers.length < 4) selectedPlayers.push(p);
     });
+    if (ids.length) saveToLocalStorage();
     updateSelectedDisplay();
     if (selectedPlayers.length) loadComparison();
   }
@@ -124,6 +131,7 @@
   }
 
   function updateSelectedDisplay() {
+    UrlState.set({ players: selectedPlayers.map(p => p.id).join(',') });
     const c = document.getElementById('selected-players');
     if (!selectedPlayers.length) {
       c.innerHTML = `<div class="empty-state">No players selected…</div>`;
@@ -147,6 +155,7 @@
     const season = document.getElementById('season-select').value;
     const playoffs = document.getElementById('season-type').value === 'playoffs';
     const typeLabel = playoffs ? 'playoff' : 'regular-season';
+    UrlState.set({ season, type: playoffs ? 'playoffs' : 'regular' });
 
     try {
       const results = await Promise.all(

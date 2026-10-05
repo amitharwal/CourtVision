@@ -54,6 +54,7 @@
   const grid = document.getElementById('standings');
 
   document.addEventListener('DOMContentLoaded', () => {
+    UrlState.apply('season-select', 'season');  // ?season=2024-25
     seasonSelect.addEventListener('change', loadStandings);
     loadStandings();
   });
@@ -113,6 +114,7 @@
 
   async function loadStandings() {
     const season = seasonSelect.value;
+    UrlState.set({ season });
     status.textContent = 'Loading standings...';
     status.hidden = false;
     grid.hidden = true;

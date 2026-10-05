@@ -173,6 +173,13 @@ class PlayerApiTest(unittest.TestCase):
         self.assertAlmostEqual(sel["TOV_P36"], 4.0 * 36 / 35)
 
 
+class SearchPlayersApiTest(unittest.TestCase):
+    def test_lookup_by_ids_keeps_order_and_skips_unknown(self):
+        client = app_module.app.test_client()
+        data = client.get("/api/search-players?ids=201939,2544,999999999,abc").get_json()
+        self.assertEqual([p["name"] for p in data["players"]], ["Stephen Curry", "LeBron James"])
+
+
 class GameLogApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()

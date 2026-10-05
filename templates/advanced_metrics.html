@@ -137,12 +137,21 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             setupEventListeners();
+            // ?metric=USG_PCT&season=2024-25&type=playoffs&min_games=4 restores and loads a view
+            if (UrlState.apply('metric-select', 'metric')) {
+                currentMetric = document.getElementById('metric-select').value;
+            }
+            UrlState.apply('season-type', 'type');
+            UrlState.apply('min-games', 'min_games');
+            const hasSeason = UrlState.apply('season-select', 'season');
             updateMetricExplanation();
+            if (hasSeason) loadMetrics();
         });
 
         function setupEventListeners() {
             document.getElementById('metric-select').addEventListener('change', function() {
                 currentMetric = this.value;
+                UrlState.set({ metric: currentMetric });
                 updateMetricExplanation();
                 if (playersData.length > 0) {
                     sortByCurrentMetric();
@@ -185,6 +194,7 @@
             const season = document.getElementById('season-select').value;
             const minGames = document.getElementById('min-games').value;
             const seasonType = document.getElementById('season-type').value;
+            UrlState.set({ metric: currentMetric, season, type: seasonType, min_games: minGames });
 
             try {
                 // Load player data with metrics

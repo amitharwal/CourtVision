@@ -83,9 +83,18 @@
   let currentSeason = null;
 
   document.addEventListener('DOMContentLoaded', () => {
+    // ?season=2018-19&type=playoffs&stat=AST
+    UrlState.apply('gamelog-type', 'type');
+    UrlState.apply('gamelog-stat', 'stat');
     loadPlayer();
-    document.getElementById('gamelog-type').addEventListener('change', () => loadGameLog(currentSeason));
-    document.getElementById('gamelog-stat').addEventListener('change', renderGameLogChart);
+    document.getElementById('gamelog-type').addEventListener('change', e => {
+      UrlState.set({ type: e.target.value === 'regular' ? null : e.target.value });
+      loadGameLog(currentSeason);
+    });
+    document.getElementById('gamelog-stat').addEventListener('change', e => {
+      UrlState.set({ stat: e.target.value === 'PTS' ? null : e.target.value });
+      renderGameLogChart();
+    });
   });
 
   async function loadPlayer() {
@@ -99,7 +108,8 @@
       renderSeasonList(data.available_seasons || []);
 
       if (data.available_seasons?.length) {
-        selectSeason(data.available_seasons[0]); // newest
+        const requested = UrlState.get('season');
+        selectSeason(data.available_seasons.includes(requested) ? requested : data.available_seasons[0]);
       } else {
         document.getElementById('overview-tab').innerHTML = '<p class="no-data">No regular-season data available.</p>';
       }
@@ -146,6 +156,7 @@
 
   async function selectSeason(seasonId) {
     currentSeason = seasonId;
+    UrlState.set({ season: seasonId });
     loadGameLog(seasonId);
     document.querySelectorAll('#season-list .season-item').forEach(li => {
       li.classList.toggle('active', li.dataset.season === seasonId);
