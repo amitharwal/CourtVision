@@ -117,7 +117,7 @@ class PlayersApiTest(unittest.TestCase):
         frames = _league_frames()
         patches = [
             mock.patch.object(app_module, "get_league_player_stats",
-                              side_effect=lambda season, measure="Base": frames[measure]),
+                              side_effect=lambda season, measure="Base", season_type=None: frames[measure]),
             mock.patch.object(app_module, "get_player_positions",
                               return_value={1: "G-F", 2: "C"}),
         ]
@@ -141,6 +141,12 @@ class PlayersApiTest(unittest.TestCase):
         filtered = self._players("&search=alpha")
         self.assertEqual(list(filtered), ["Alpha Guard"])
         self.assertEqual(filtered["Alpha Guard"]["USG_PCT"], unfiltered["USG_PCT"])
+
+    def test_playoffs_season_type_passed_through(self):
+        self._players("&season_type=playoffs")
+        season_types = {c.kwargs.get("season_type") or c.args[2]
+                        for c in app_module.get_league_player_stats.call_args_list}
+        self.assertEqual(season_types, {"Playoffs"})
 
     def test_positions_joined_and_filterable(self):
         self.assertEqual(self._players()["Alpha Guard"]["POSITION"], "G-F")

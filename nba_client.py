@@ -94,17 +94,17 @@ def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
         print(f"[WARN] get_team_gamelog_cached failed: {e}")
         return pd.DataFrame()
 
-def get_league_player_stats(season: str, measure_type: str = "Base"):
+def get_league_player_stats(season: str, measure_type: str = "Base", season_type: str = "Regular Season"):
     """League-wide LeagueDashPlayerStats (season totals), cached for 30min."""
     def load():
         return nbacall_retry(
             leaguedashplayerstats.LeagueDashPlayerStats,
             season=season,
-            season_type_all_star="Regular Season",
+            season_type_all_star=season_type,
             measure_type_detailed_defense=measure_type,
         ).get_data_frames()[0]
 
-    return cached(("league_player_stats", season, measure_type), TTL_DEFAULT, load)
+    return cached(("league_player_stats", season, measure_type, season_type), TTL_DEFAULT, load)
 
 def get_league_team_stats(season: str):
     """League-wide per-game LeagueDashTeamStats, cached for 30min."""

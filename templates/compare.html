@@ -31,6 +31,10 @@
                         <option value="{{ season }}">{{ season }}</option>
                     {% endfor %}
                 </select>
+                <select id="season-type" aria-label="Season type">
+                    <option value="regular">Regular Season</option>
+                    <option value="playoffs">Playoffs</option>
+                </select>
                 <button id="refresh-comparison" class="refresh-btn">Refresh</button>
             </div>
 
@@ -56,6 +60,8 @@
     document.getElementById('refresh-comparison')
       .addEventListener('click', loadComparison);
     document.getElementById('season-select')
+      .addEventListener('change', loadComparison);
+    document.getElementById('season-type')
       .addEventListener('change', loadComparison);
   }
 
@@ -139,6 +145,8 @@
     const content = document.getElementById('comparison-content');
     content.innerHTML = '<div class="loading">Loading player stats…</div>';
     const season = document.getElementById('season-select').value;
+    const playoffs = document.getElementById('season-type').value === 'playoffs';
+    const typeLabel = playoffs ? 'playoff' : 'regular-season';
 
     try {
       const results = await Promise.all(
@@ -154,7 +162,8 @@
         if (!res.success) throw new Error(res.error || 'API error');
         // Season rows from /api/player; a traded player has one row per team
         // plus a combined "TOT" row, which is the one to compare.
-        const rows = (res.seasons_regular || []).filter(r => r.SEASON_ID === season);
+        const seasonRows = (playoffs ? res.seasons_postseason : res.seasons_regular) || [];
+        const rows = seasonRows.filter(r => r.SEASON_ID === season);
         const rec = rows.find(r => r.TEAM_ABBREVIATION === 'TOT') || rows[0];
         if (!rec) {
           missing.push(selectedPlayers[idx].name);
@@ -173,14 +182,14 @@
       });
 
       if (missing.length === selectedPlayers.length) {
-        content.innerHTML = `<div class="error">No ${season} regular-season stats for the selected players.</div>`;
+        content.innerHTML = `<div class="error">No ${season} ${typeLabel} stats for the selected players.</div>`;
         return;
       }
       displayComparison();
       if (missing.length) {
         const note = document.createElement('div');
         note.className = 'comparison-note';
-        note.textContent = `No ${season} regular-season stats for: ${missing.join(', ')}`;
+        note.textContent = `No ${season} ${typeLabel} stats for: ${missing.join(', ')}`;
         content.prepend(note);
       }
     } catch (e) {

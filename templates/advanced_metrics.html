@@ -37,6 +37,14 @@
                 </div>
 
                 <div class="control-group">
+                    <label for="season-type">Season Type</label>
+                    <select id="season-type">
+                        <option value="regular">Regular Season</option>
+                        <option value="playoffs">Playoffs</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
                     <label for="min-games">Min Games Played</label>
                     <input type="number" id="min-games" value="20" min="1" max="82">
                 </div>
@@ -147,6 +155,13 @@
 
             document.getElementById('load-metrics').addEventListener('click', loadMetrics);
 
+            // Playoff runs are short, so swap the default games threshold with the season type.
+            document.getElementById('season-type').addEventListener('change', function() {
+                const minGames = document.getElementById('min-games');
+                if (this.value === 'playoffs' && minGames.value === '20') minGames.value = '4';
+                if (this.value === 'regular' && minGames.value === '4') minGames.value = '20';
+            });
+
             document.querySelectorAll('.viz-tab').forEach(tab => {
                 tab.addEventListener('click', function() {
                     document.querySelectorAll('.viz-tab').forEach(t => t.classList.remove('active'));
@@ -169,10 +184,11 @@
 
             const season = document.getElementById('season-select').value;
             const minGames = document.getElementById('min-games').value;
+            const seasonType = document.getElementById('season-type').value;
 
             try {
                 // Load player data with metrics
-                const response = await fetch(`/api/players?season=${season}&sort_by=${currentMetric}`);
+                const response = await fetch(`/api/players?season=${season}&sort_by=${currentMetric}&season_type=${seasonType}`);
                 const data = await response.json();
 
                 if (data.success) {
@@ -183,7 +199,7 @@
                     if (!playersData.length) {
                         showMessage(data.data.length
                             ? `No players with at least ${minGames} games in ${season}. Try a lower minimum.`
-                            : `No regular-season stats for ${season} yet.`);
+                            : `No ${seasonType === 'playoffs' ? 'playoff' : 'regular-season'} stats for ${season}.`);
                         return;
                     }
 

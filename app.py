@@ -394,14 +394,15 @@ def get_players():
         position_filter = request.args.get("position", "all")
         sort_by = request.args.get("sort_by", "PTS")
         search = request.args.get("search", "").lower()
+        season_type = parse_season_type(request.args.get("season_type"))
 
         # Compute everything on the full league table first, then filter, so that
         # league-relative metrics don't change with the search/team/position filter.
-        df = get_league_player_stats(season).copy()
+        df = get_league_player_stats(season, season_type=season_type).copy()
 
         # Official NBA advanced metrics (fractions, e.g. 0.312) replace local estimates.
         adv_cols = ["USG_PCT", "AST_PCT", "REB_PCT", "PIE"]
-        adv = get_league_player_stats(season, "Advanced")
+        adv = get_league_player_stats(season, "Advanced", season_type)
         df = df.merge(adv[["PLAYER_ID"] + adv_cols], on="PLAYER_ID", how="left")
         df[adv_cols] = df[adv_cols].fillna(0) * 100
 
@@ -533,6 +534,7 @@ def get_player_detail(player_id: int):
 
         seasons_regular = norm.get("SeasonTotalsRegularSeason", []) or []
         career_regular  = norm.get("CareerTotalsRegularSeason", []) or []
+        seasons_postseason = norm.get("SeasonTotalsPostSeason", []) or []
 
         # Sort newest -> oldest
         def season_key(row):
@@ -541,9 +543,10 @@ def get_player_detail(player_id: int):
             except Exception:
                 return -1
         seasons_regular = sorted(seasons_regular, key=season_key, reverse=True)
+        seasons_postseason = sorted(seasons_postseason, key=season_key, reverse=True)
 
-        # Available seasons list
-        available_seasons = [r.get("SEASON_ID") for r in seasons_regular if r.get("SEASON_ID")]
+        # Available seasons list (traded players have several rows per season)
+        available_seasons = list(dict.fromkeys(r.get("SEASON_ID") for r in seasons_regular if r.get("SEASON_ID")))
 
         # Helper to compute derived metrics for a season row
         def enrich(row):
@@ -609,6 +612,7 @@ def get_player_detail(player_id: int):
 
         # Enrich all rows for front‑end (keeps TEAM_ABBREVIATION from the season)
         seasons_regular = [enrich(r) for r in seasons_regular]
+        seasons_postseason = [enrich(r) for r in seasons_postseason]
 
         # Determine selected_season
         selected = None
@@ -621,6 +625,7 @@ def get_player_detail(player_id: int):
             "success": True,
             "player_info": info,                 # current team/bio
             "seasons_regular": seasons_regular,  # enriched rows (newest->oldest)
+            "seasons_postseason": seasons_postseason,
             "career_regular": career_regular,
             "available_seasons": available_seasons,
             "selected_season": selected,
@@ -660,6 +665,7 @@ def api_player_gamelog(player_id: int):
 @app.route("/api/shot-chart/<int:player_id>")
 def api_shot_chart(player_id: int):
     season = request.args.get("season", get_seasons()[0])
+    season_type = parse_season_type(request.args.get("season_type"))
 
     def load():
         return nbacall_retry(
@@ -667,18 +673,19 @@ def api_shot_chart(player_id: int):
             team_id=0,
             player_id=player_id,
             season_nullable=season,
-            season_type_all_star="Regular Season",
+            season_type_all_star=season_type,
             context_measure_simple="FGA",  # the default ("PTS") returns made shots only
         ).get_data_frames()[0]
 
     try:
-        df = cached(("shot_chart", player_id, season), TTL_DEFAULT, load)
+        df = cached(("shot_chart", player_id, season, season_type), TTL_DEFAULT, load)
     except Exception as e:
         print(f"[ERROR] /api/shot-chart/{player_id}: {e}")
         return jsonify({"success": False, "error": "Unable to fetch shot data from NBA API."}), 503
 
     if df is None or df.empty:
-        return jsonify({"success": False, "error": "No shot data for this player/season."}), 404
+        label = "playoff shots" if season_type == "Playoffs" else "shot data"
+        return jsonify({"success": False, "error": f"No {label} for this player in {season}."}), 404
 
     columns = [
         "LOC_X",
@@ -705,8 +712,9 @@ def export_players():
         season = request.args.get("season", get_seasons()[0])
         team_code = request.args.get("team", "all")
         sort_by = request.args.get("sort_by", "PTS")
+        season_type = parse_season_type(request.args.get("season_type"))
 
-        df = get_league_player_stats(season)
+        df = get_league_player_stats(season, season_type=season_type)
         if team_code != "all":
             df = df[df["TEAM_ABBREVIATION"] == team_code]
         if sort_by in df.columns:

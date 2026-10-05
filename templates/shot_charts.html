@@ -30,6 +30,14 @@
             </div>
 
             <div class="control-group">
+                <label for="season-type">Season Type</label>
+                <select id="season-type">
+                    <option value="regular">Regular Season</option>
+                    <option value="playoffs">Playoffs</option>
+                </select>
+            </div>
+
+            <div class="control-group">
                 <label for="shot-type">Shot Type</label>
                 <select id="shot-type">
                     <option value="all">All Shots</option>
@@ -187,9 +195,10 @@
             document.getElementById('chart-container').style.display = 'none';
 
             const season = document.getElementById('season-select').value;
+            const seasonType = document.getElementById('season-type').value;
 
             try {
-                const response = await fetch(`/api/shot-chart/${selectedPlayer.id}?season=${season}`);
+                const response = await fetch(`/api/shot-chart/${selectedPlayer.id}?season=${season}&season_type=${seasonType}`);
                 const data = await response.json();
 
                 if (data.success) {
