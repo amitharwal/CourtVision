@@ -237,6 +237,42 @@ class RosterAnalysisApiTest(unittest.TestCase):
         self.assertEqual(data["top_scorer"]["player_id"], 77)
 
 
+class HomeApiTest(unittest.TestCase):
+    def setUp(self):
+        nba_client._CACHE.clear()
+        self.client = app_module.app.test_client()
+
+    def test_games_today_reads_home_and_away_from_game_code(self):
+        games = pd.DataFrame([{"gameId": "1", "gameCode": "20250115/NYKPHI", "gameStatus": 3,
+                               "gameStatusText": "Final/OT ", "gameLabel": "", "seriesText": ""}])
+        teams_df = pd.DataFrame([
+            {"gameId": "1", "teamId": 20, "teamCity": "Philadelphia", "teamName": "76ers",
+             "teamTricode": "PHI", "wins": 15, "losses": 24, "score": 119},
+            {"gameId": "1", "teamId": 10, "teamCity": "New York", "teamName": "Knicks",
+             "teamTricode": "NYK", "wins": 27, "losses": 15, "score": 125},
+        ])
+        endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), games, teams_df]))
+        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint):
+            data = self.client.get("/api/games-today").get_json()
+        game = data["games"][0]
+        self.assertEqual((game["away"]["tricode"], game["away"]["score"]), ("NYK", 125))
+        self.assertEqual((game["home"]["tricode"], game["home"]["score"]), ("PHI", 119))
+        self.assertEqual(game["status_text"], "Final/OT")
+
+    def test_league_leaders_require_half_the_max_games(self):
+        df = pd.DataFrame([
+            {"PLAYER_ID": 1, "PLAYER_NAME": "Regular", "TEAM_ID": 5, "TEAM_ABBREVIATION": "AAA",
+             "GP": 60, "PTS": 1500, "REB": 300, "AST": 300},
+            {"PLAYER_ID": 2, "PLAYER_NAME": "Cameo", "TEAM_ID": 6, "TEAM_ABBREVIATION": "BBB",
+             "GP": 5, "PTS": 200, "REB": 10, "AST": 10},
+        ])
+        with mock.patch.object(app_module, "get_league_player_stats", return_value=df):
+            data = self.client.get("/api/league-leaders?season=2024-25").get_json()
+        self.assertEqual(data["min_games"], 30)
+        self.assertEqual([p["name"] for p in data["leaders"]["PTS"]], ["Regular"])
+        self.assertEqual(data["leaders"]["PTS"][0]["value"], 25.0)
+
+
 class StandingsApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
