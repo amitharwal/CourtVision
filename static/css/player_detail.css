@@ -93,25 +93,31 @@
 }
 
 .season-list li {
-  padding: 10px var(--space-3);
   border-bottom: var(--border-thin);
-  cursor: pointer;
-}
-
-.season-list li:hover {
-  background-color: var(--light-gray);
-}
-
-.season-list li.active {
-  background-color: var(--accent-soft);
-  box-shadow: inset 4px 0 0 var(--accent);
-  font-weight: bold;
 }
 
 .season-list li.loading,
 .season-list li.error,
 .season-list li.no-data {
-  cursor: default;
+  padding: 10px var(--space-3);
+}
+
+.season-item {
+  padding: 10px var(--space-3);
+}
+
+.season-item:hover {
+  background-color: var(--light-gray);
+}
+
+.season-item.active {
+  background-color: var(--accent-soft);
+  box-shadow: inset 4px 0 0 var(--accent);
+  font-weight: bold;
+}
+
+.season-item:focus-visible {
+  outline-offset: -3px;
 }
 
 /* ---- Main column ---- */

@@ -27,7 +27,7 @@
         </div>
     </section>
 
-    <p id="standings-status" class="status">Loading standings...</p>
+    <div id="standings-status" class="panel standings-status"></div>
 
     <div id="standings" class="standings-grid" hidden>
         <section class="panel conference">
@@ -115,9 +115,14 @@
   async function loadStandings() {
     const season = seasonSelect.value;
     UrlState.set({ season });
-    status.textContent = 'Loading standings...';
-    status.hidden = false;
-    grid.hidden = true;
+    // First load shows placeholders; a season change dims the current tables instead.
+    const firstLoad = grid.hidden;
+    if (firstLoad) {
+      UI.skeleton(status, 'rows', 12);
+      status.hidden = false;
+    } else {
+      UI.refreshing(grid, true);
+    }
 
     try {
       const res = await fetch(`/api/standings?season=${encodeURIComponent(season)}`);
@@ -132,7 +137,11 @@
       grid.hidden = false;
     } catch (e) {
       console.error(e);
-      status.textContent = e.message || 'Unable to load standings. Please try again.';
+      const text = e.message || 'Unable to load standings. Please try again.';
+      if (firstLoad) status.replaceChildren(Object.assign(document.createElement('p'), { className: 'error', textContent: text }));
+      else UI.toast(text, { kind: 'error' });
+    } finally {
+      UI.refreshing(grid, false);
     }
   }
 </script>

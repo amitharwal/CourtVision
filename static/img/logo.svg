@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34">
+  <!-- Court Vision mark: a coral basketball with the site's hard black offset shadow -->
+  <circle cx="18" cy="18" r="14.5" fill="#000"/>
+  <circle cx="15.5" cy="15.5" r="14" fill="#FF5E5B" stroke="#000" stroke-width="2.5"/>
+  <g fill="none" stroke="#000" stroke-width="2" stroke-linecap="round">
+    <path d="M15.5 1.5v28M1.5 15.5h28"/>
+    <path d="M5.6 5.6c5.3 5.3 5.3 14.5 0 19.8M25.4 5.6c-5.3 5.3-5.3 14.5 0 19.8"/>
+  </g>
+</svg>

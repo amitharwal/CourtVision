@@ -31,20 +31,6 @@
   font-size: var(--fs-md);
 }
 
-.search-player {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.search-note {
-  margin-left: auto;
-  font-size: var(--fs-xs);
-  color: var(--muted);
-}
-
 /* ---- Section headings ---- */
 .home-section {
   margin-bottom: var(--space-6);

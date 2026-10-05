@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Court Vision 🏀{% endblock %}
+{% block title %}{% endblock %}
 
 {% block head %}
     <link rel="stylesheet" href="/static/css/home.css">
@@ -9,7 +9,7 @@
 {% block content %}
     <section class="panel hero">
       <div class="hero-text">
-        <h2>Court Vision 🏀</h2>
+        <h2>Court Vision</h2>
         <p>NBA stats, shot charts and team trends, straight from the league's data.</p>
       </div>
       <div class="search-field hero-search">
@@ -176,6 +176,9 @@
   async function loadGamesToday() {
     const grid = document.getElementById('games-grid');
     clearTimeout(liveTimer);
+    const refreshing = !!grid.querySelector('.game-card');
+    if (refreshing) UI.refreshing(grid, true);
+    else UI.skeleton(grid, 'cards', 4);
     try {
       const res = await fetch('/api/games-today');
       const data = await res.json();
@@ -190,7 +193,10 @@
       if (data.games.some(g => g.status === 2)) liveTimer = setTimeout(loadGamesToday, LIVE_REFRESH_MS);
     } catch (e) {
       console.error(e);
-      message(grid, "Couldn't load today's games. Try again shortly.", 'error');
+      if (refreshing) UI.toast("Couldn't refresh today's games.", { kind: 'error' });
+      else message(grid, "Couldn't load today's games. Try again shortly.", 'error');
+    } finally {
+      UI.refreshing(grid, false);
     }
   }
 
@@ -223,6 +229,7 @@
   // ---- League leaders ----
   async function loadLeaders() {
     const container = document.getElementById('leaders');
+    UI.skeleton(container, 'rows', 6);
     try {
       const res = await fetch(`/api/league-leaders?season=${encodeURIComponent(SEASON)}`);
       const data = await res.json();
@@ -265,6 +272,7 @@
   // ---- Standings snapshot ----
   async function loadStandingsSnapshot() {
     const container = document.getElementById('standings-snapshot');
+    UI.skeleton(container, 'rows', 8);
     try {
       const res = await fetch(`/api/standings?season=${encodeURIComponent(SEASON)}`);
       const data = await res.json();

@@ -128,54 +128,44 @@
         });
     }
 
+    const TEAM_SECTIONS = ['team-overview', 'trends-visualization', 'roster-analysis'];
+
     async function loadTeamData() {
         if (!currentTeamId) {
-            alert('Please select a team');
+            UI.toast('Choose a team first.', { kind: 'error' });
+            document.getElementById('team-select').focus();
             return;
         }
 
-        // Show spinner + hide everything before fetch
-    showLoading(true);
-    hideAllSections();
-    const season = document.getElementById('season-select').value;
-    UrlState.set({ team_id: currentTeamId, season });
+        // A first load shows the spinner; switching team or season keeps the
+        // current sections on screen, dimmed, until the new data arrives.
+        const sections = TEAM_SECTIONS.map(id => document.getElementById(id));
+        const refreshing = sections[0].style.display === 'block';
+        if (refreshing) sections.forEach(el => UI.refreshing(el, true));
+        else { showLoading(true); hideAllSections(); }
 
-    // Fetch & parse JSON
-    let data;
-    try {
-        console.log('Requesting /api/team-stats/', currentTeamId, season);
-        const resp = await fetch(`/api/team-stats/${currentTeamId}?season=${season}`);
-        data = await resp.json();
-        console.log('team‑stats payload:', data);
-    } catch (fetchErr) {
-        console.error('Network error in loadTeamData:', fetchErr);
-        alert('Network error loading team data');
-        showLoading(false);
-        return;
-    }
+        const season = document.getElementById('season-select').value;
+        UrlState.set({ team_id: currentTeamId, season });
 
-    // If the API says “success: false”…
-    if (!data.success) {
-        console.error('API failure payload:', data);
-        alert('API error: ' + (data.error||'unknown'));
-        showLoading(false);
-        return;
-    }
+        let data;
+        try {
+            const resp = await fetch(`/api/team-stats/${currentTeamId}?season=${season}`);
+            data = await resp.json();
+            if (!data.success) throw new Error(data.error || 'Unable to load team data.');
+        } catch (err) {
+            console.error('loadTeamData:', err);
+            UI.toast(err.message || 'Unable to load team data.', { kind: 'error' });
+            return;
+        } finally {
+            showLoading(false);
+            sections.forEach(el => UI.refreshing(el, false));
+        }
 
-    teamData = data.stats;
-    console.log('About to render with teamData:', teamData);
-
-    // Reveal the sections
-    document.getElementById('team-overview').style.display = 'block';
-    document.getElementById('trends-visualization').style.display = 'block';
-    document.getElementById('roster-analysis').style.display = 'block';
-
-    displayTeamOverview();
-    displayTrends();
-    loadRosterAnalysis();
-
-    // Hide spinner
-    showLoading(false);
+        teamData = data.stats;
+        sections.forEach(el => { el.style.display = 'block'; });
+        displayTeamOverview();
+        displayTrends();
+        loadRosterAnalysis();
     }
 
     function displayTeamOverview() {

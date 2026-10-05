@@ -142,9 +142,12 @@
             document.getElementById('period-select').addEventListener('change', filterShots);
 
             document.addEventListener('click', function(e) {
-                if (!e.target.closest('.control-group')) {
+                if (!e.target.closest('.search-field')) {
                     document.getElementById('player-results').style.display = 'none';
                 }
+            });
+            document.getElementById('player-search').addEventListener('keydown', e => {
+                if (e.key === 'Escape') document.getElementById('player-results').style.display = 'none';
             });
         }
 
@@ -178,13 +181,8 @@
                 return;
             }
 
-            resultsDiv.replaceChildren(...players.map(player => {
-                const div = document.createElement('div');
-                div.className = 'search-option';
-                div.textContent = `${player.name} ${player.is_active ? '' : '(Retired)'}`;
-                div.addEventListener('click', () => selectPlayer(player.id, player.name));
-                return div;
-            }));
+            resultsDiv.replaceChildren(...players.map(player =>
+                UI.playerOption(player, () => selectPlayer(player.id, player.name))));
             resultsDiv.style.display = 'block';
         }
 
@@ -210,12 +208,16 @@
 
         async function loadShotChart() {
             if (!selectedPlayer) {
-                alert('Please select a player first');
+                UI.toast('Search for a player first.', { kind: 'error' });
+                document.getElementById('player-search').focus();
                 return;
             }
 
-            document.getElementById('loading').style.display = 'flex';
-            document.getElementById('chart-container').style.display = 'none';
+            // Reloads keep the current chart on screen, dimmed; the first load shows the spinner
+            const chart = document.getElementById('chart-container');
+            const refreshing = chart.style.display === 'block';
+            if (refreshing) UI.refreshing(chart, true);
+            else document.getElementById('loading').style.display = 'flex';
 
             const season = document.getElementById('season-select').value;
             const seasonType = document.getElementById('season-type').value;
@@ -230,12 +232,13 @@
                     displayShotChart();
                     document.getElementById('chart-container').style.display = 'block';
                 } else {
-                    alert(data.error || 'No shot data available for this player/season');
+                    UI.toast(data.error || 'No shot data for this player and season.', { kind: 'error' });
                 }
             } catch (error) {
-                alert('Failed to load shot chart');
+                UI.toast('Failed to load the shot chart. Please try again.', { kind: 'error' });
             } finally {
                 document.getElementById('loading').style.display = 'none';
+                UI.refreshing(chart, false);
             }
         }
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Player Details{% endblock %}
+{% block title %}Player{% endblock %}
 
 {% block head %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -65,7 +65,7 @@
             </label>
           </div>
         </div>
-        <p id="gamelog-status" class="loading">Select a season to see its game log.</p>
+        <div id="gamelog-status" class="no-data">Select a season to see its game log.</div>
         <div id="gamelog-body" hidden>
           <div class="chart-box"><canvas id="gamelog-chart" role="img" aria-label="Per-game values with a rolling average; the table below lists every game"></canvas></div>
           <div id="gamelog-legend" class="chart-legend"></div>
@@ -125,6 +125,7 @@
     avatar.id = 'p-avatar';
     document.getElementById('p-avatar').replaceWith(avatar);
     document.getElementById('p-name').textContent = info.DISPLAY_FIRST_LAST || 'Unknown Player';
+    if (info.DISPLAY_FIRST_LAST) document.title = `${info.DISPLAY_FIRST_LAST} · Court Vision`;
     const meta = document.getElementById('p-meta');
     meta.replaceChildren(`${info.TEAM_NAME || 'Free Agent'} • #${info.JERSEY || 'N/A'} • ${info.POSITION || 'N/A'}`);
     if (info.TEAM_ID) meta.prepend(NbaMedia.teamLogo(info.TEAM_ID, 18));
@@ -148,10 +149,13 @@
     }
     seasons.forEach(s => {
       const li = document.createElement('li');
-      li.className = 'season-item';
-      li.textContent = s;
-      li.dataset.season = s;
-      li.onclick = () => selectSeason(s);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'button-reset season-item';
+      btn.textContent = s;
+      btn.dataset.season = s;
+      btn.addEventListener('click', () => selectSeason(s));
+      li.appendChild(btn);
       ul.appendChild(li);
     });
   }
@@ -160,9 +164,17 @@
     currentSeason = seasonId;
     UrlState.set({ season: seasonId });
     loadGameLog(seasonId);
-    document.querySelectorAll('#season-list .season-item').forEach(li => {
-      li.classList.toggle('active', li.dataset.season === seasonId);
+    document.querySelectorAll('#season-list .season-item').forEach(btn => {
+      const active = btn.dataset.season === seasonId;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-current', active ? 'true' : 'false');
     });
+
+    // Keep the current season's stats on screen, dimmed, until the new ones arrive
+    const statsPanel = document.querySelector('.stats-content');
+    const overview = document.getElementById('overview-tab');
+    if (overview.querySelector('.stats-grid')) UI.refreshing(statsPanel, true);
+    else UI.skeleton(overview, 'rows', 10);
 
     try {
       const res = await fetch(`/api/player/${playerId}?season=${encodeURIComponent(seasonId)}`);
@@ -178,6 +190,8 @@
       updateSeasonContext(null);
       document.getElementById('overview-tab').innerHTML = `<p class="no-data">No Regular Season data for ${seasonId}.</p>`;
       document.getElementById('badges').innerHTML = '';
+    } finally {
+      if (currentSeason === seasonId) UI.refreshing(statsPanel, false);
     }
   }
 
@@ -325,9 +339,19 @@
     const body = document.getElementById('gamelog-body');
     document.getElementById('gamelog-title').textContent =
       `Game Log: ${seasonId} ${type === 'playoffs' ? 'Playoffs' : 'Regular Season'}`;
-    status.textContent = 'Loading game log…';
-    status.hidden = false;
-    body.hidden = true;
+    const refreshing = !body.hidden;
+    if (refreshing) {
+      UI.refreshing(body, true);
+    } else {
+      UI.skeleton(status, 'block');
+      status.hidden = false;
+    }
+
+    const showMessage = text => {
+      status.textContent = text;
+      status.hidden = false;
+      body.hidden = true;
+    };
 
     try {
       const res = await fetch(`/api/player/${playerId}/gamelog?season=${encodeURIComponent(seasonId)}&season_type=${type}`);
@@ -336,9 +360,7 @@
       if (!data.success) throw new Error(data.error);
       gameLog = data.games;
       if (!gameLog.length) {
-        status.textContent = type === 'playoffs'
-          ? `No playoff games in ${seasonId}.`
-          : `No games logged for ${seasonId}.`;
+        showMessage(type === 'playoffs' ? `No playoff games in ${seasonId}.` : `No games logged for ${seasonId}.`);
         return;
       }
       status.hidden = true;
@@ -348,7 +370,9 @@
     } catch (e) {
       if (requestId !== gameLogRequest) return;
       console.error(e);
-      status.textContent = e.message || 'Failed to load game log.';
+      showMessage(e.message || 'Failed to load game log.');
+    } finally {
+      if (requestId === gameLogRequest) UI.refreshing(body, false);
     }
   }
 
@@ -457,11 +481,12 @@
   function addToCompare(id, name){
     try {
       const list = JSON.parse(localStorage.getItem('compareList') || '[]');
-      if (list.find(p => p.id === id)) return alert(`${name} is already in your comparison list`);
-      if (list.length >= 4) return alert('You can compare up to 4 players at a time');
+      const openCompare = { label: 'Open Compare', href: '/compare' };
+      if (list.find(p => p.id === id)) return UI.toast(`${name} is already in your comparison.`, { action: openCompare });
+      if (list.length >= 4) return UI.toast('You can compare up to 4 players. Remove one first.', { kind: 'error', action: openCompare });
       list.push({ id, name });
       localStorage.setItem('compareList', JSON.stringify(list));
-      alert(`${name} added to comparison. ${list.length}/4 players selected.`);
+      UI.toast(`${name} added to comparison (${list.length}/4).`, { action: openCompare });
     } catch(e) {
       console.warn('addToCompare failed', e);
     }

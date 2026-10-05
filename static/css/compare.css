@@ -41,6 +41,8 @@
 }
 
 .add-slot {
+  font: inherit;
+  background: none;
   border: 2px dashed var(--primary);
   padding: var(--space-3) var(--space-6);
   color: var(--muted);

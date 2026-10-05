@@ -103,9 +103,17 @@ header {
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-display);
   font-size: var(--fs-xl);
   font-weight: bold;
+  text-decoration: none;
+}
+
+.logo:hover {
+  color: var(--accent);
 }
 
 nav {
@@ -478,8 +486,28 @@ input:focus {
   border-bottom: var(--border-thin);
 }
 
-.search-option:hover {
+.search-option:hover,
+.search-option:focus-visible {
   background-color: var(--light-gray);
+}
+
+.search-option:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Result row with a headshot: an <a> (Home) or a <button> (Compare, Shot Charts) */
+.search-player {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.search-note {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
 .no-results {
@@ -582,4 +610,137 @@ input:focus {
   width: 16px;
   height: 3px;
   border-radius: 2px;
+}
+
+/* -------------------------------------------------------- Accessibility */
+/* Keyboard focus: one visible coral ring everywhere (mouse clicks don't show it) */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+main:focus {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--space-4);
+  top: -60px;
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--primary);
+  color: var(--secondary);
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: var(--space-4);
+}
+
+/* Reset for <button>s that act as list items or menu options */
+.button-reset {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------- Toast */
+.toast-region {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: min(360px, calc(100vw - 2 * var(--space-5)));
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border);
+  box-shadow: var(--shadow-sm);
+  background-color: var(--secondary);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  animation: toast-in 0.2s ease-out;
+}
+
+.toast-error {
+  border-left: 8px solid var(--accent);
+}
+
+.toast a {
+  margin-left: auto;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+@keyframes toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+}
+
+/* ------------------------------------------------- Loading and refreshing */
+.skeleton-group {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+  grid-column: 1 / -1;   /* span the row when placed inside a grid container */
+}
+
+.skeleton {
+  height: 16px;
+  background: linear-gradient(90deg, var(--light-gray) 25%, var(--line) 50%, var(--light-gray) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-rows .skeleton:nth-child(3n + 2) { width: 85%; }
+.skeleton-rows .skeleton:nth-child(3n) { width: 70%; }
+
+.skeleton-cards {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.skeleton-cards .skeleton {
+  height: 132px;
+  border: var(--border);
+}
+
+.skeleton-block .skeleton {
+  height: 300px;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* Previous content stays put, dimmed, while new data loads */
+.is-refreshing {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.2s;
 }

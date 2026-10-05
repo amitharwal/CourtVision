@@ -216,8 +216,11 @@
         }
 
         async function loadMetrics() {
-            showLoading(true);
-            hideAllSections();
+            // Reloads keep the current results on screen, dimmed; the first load shows the spinner
+            const panels = ['metrics-visualization', 'metrics-insights'].map(id => document.getElementById(id));
+            const refreshing = panels[0].style.display === 'block';
+            if (refreshing) panels.forEach(el => UI.refreshing(el, true));
+            else { showLoading(true); hideAllSections(); }
 
             const season = document.getElementById('season-select').value;
             const seasonType = document.getElementById('season-type').value;
@@ -247,6 +250,7 @@
                 showMessage('Error loading metrics. Please try again.');
             } finally {
                 showLoading(false);
+                panels.forEach(el => UI.refreshing(el, false));
             }
         }
 

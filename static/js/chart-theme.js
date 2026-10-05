@@ -30,7 +30,7 @@ const CourtCharts = {
     d.color = c.muted;
     d.borderColor = c.grid;
     d.maintainAspectRatio = false;
-    d.animation.duration = 300;
+    d.animation.duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 300;
 
     d.scale.grid.color = c.grid;
     d.scale.border.color = c.grid;
