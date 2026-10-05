@@ -22,12 +22,14 @@ from nba_client import (
     cached,
     get_league_player_stats,
     get_league_team_stats,
+    get_player_gamelog,
     get_player_positions,
     get_seasons,
     get_standings,
     get_team_estimated_metrics,
     get_team_gamelog_cached,
     nbacall_retry,
+    parse_season_type,
 )
 
 # ------------------------------------------------------------------------------
@@ -627,6 +629,33 @@ def get_player_detail(player_id: int):
     except Exception as e:
         print(f"[ERROR] /api/player/{player_id}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/player/<int:player_id>/gamelog")
+def api_player_gamelog(player_id: int):
+    season = request.args.get("season") or get_seasons()[0]
+    season_type = parse_season_type(request.args.get("season_type"))
+
+    try:
+        df = get_player_gamelog(player_id, season, season_type)
+    except Exception as e:
+        print(f"[ERROR] /api/player/{player_id}/gamelog: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch game log from NBA API."}), 503
+
+    if df is None or df.empty:
+        return jsonify({"success": True, "season": season, "season_type": season_type, "games": []})
+
+    columns = ["MATCHUP", "WL", "MIN", "PTS", "REB", "AST", "STL", "BLK", "TOV",
+               "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA", "PLUS_MINUS"]
+    games = df.iloc[::-1]  # oldest -> newest, for charting
+    dates = pd.to_datetime(games["GAME_DATE"], format="%b %d, %Y", errors="coerce")
+    records = []
+    for (_, g), date in zip(games.iterrows(), dates):
+        rec = {c: g[c] for c in columns if c in g}
+        rec["GAME_ID"] = g["Game_ID"]
+        rec["GAME_DATE"] = date.strftime("%Y-%m-%d") if pd.notna(date) else g["GAME_DATE"]
+        records.append(rec)
+
+    return jsonify({"success": True, "season": season, "season_type": season_type, "games": records})
 
 @app.route("/api/shot-chart/<int:player_id>")
 def api_shot_chart(player_id: int):

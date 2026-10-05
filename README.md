@@ -2,7 +2,8 @@
 An NBA analytics web app built with Flask and [nba_api](https://github.com/swar/nba_api).
 
 ## Features
-- **Players**: search every NBA player and open a career detail page
+- **Players**: search every NBA player and open a career detail page with a game-by-game
+  log and rolling-average chart (regular season or playoffs)
 - **Teams**: season record, efficiency ratings, monthly win % and roster leaders
 - **Standings**: conference standings with playoff and play-in seeds
 - **Shot Charts**: every field-goal attempt for a player and season, filterable by result and period

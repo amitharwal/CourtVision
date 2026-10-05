@@ -133,3 +133,18 @@ footer a { color:var(--primary); font-weight:bold; }
   color: var(--secondary);
   border: 2px solid var(--primary);
 }
+/* --- game log --- */
+[hidden] { display:none !important; }
+.gamelog { border:2px solid var(--primary); padding:20px; background:var(--secondary); box-shadow:var(--shadow); margin-top:12px; }
+.gamelog-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;
+  border-bottom:2px solid var(--primary); padding-bottom:10px; margin-bottom:14px; }
+.gamelog-controls { display:flex; gap:12px; flex-wrap:wrap; }
+.gamelog-controls label { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:bold; text-transform:uppercase; }
+.gamelog-controls select { padding:6px 8px; border:2px solid var(--primary); background:var(--secondary); font-family:inherit; cursor:pointer; }
+.gamelog-chart { position:relative; height:300px; }
+.gamelog-legend { font-size:12px; color:var(--muted); margin-top:8px; }
+.gamelog-table { max-height:420px; overflow:auto; }
+.gamelog-table td { white-space:nowrap; text-align:center; }
+.gamelog-table tr.win td:nth-child(3) { color:#2E7D32; font-weight:bold; }
+.gamelog-table tr.loss td:nth-child(3) { color:#C62828; font-weight:bold; }
+.player-main { min-width:0; }

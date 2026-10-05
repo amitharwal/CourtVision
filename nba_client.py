@@ -9,6 +9,7 @@ from time import time as _now
 import pandas as pd
 from nba_api.stats.endpoints import (
     LeagueGameLog,
+    PlayerGameLog,
     TeamGameLog,
     leaguedashplayerstats,
     leaguedashteamstats,
@@ -31,6 +32,13 @@ DEFAULT_TIMEOUT = 30
 
 # First season covered by the league dashboard, advanced stats and shot chart endpoints.
 FIRST_STATS_SEASON_YEAR = 1996
+
+# Season types the UI can request, keyed by the query-string value.
+SEASON_TYPES = {"regular": "Regular Season", "playoffs": "Playoffs"}
+
+def parse_season_type(value) -> str:
+    """Map a ?season_type= value ("regular"/"playoffs") to the NBA API name."""
+    return SEASON_TYPES.get((value or "").lower(), SEASON_TYPES["regular"])
 
 # ------------------------------------------------------------------------------
 # In-memory TTL cache for NBA API responses
@@ -132,6 +140,18 @@ def get_standings(season: str):
         ).get_data_frames()[0]
 
     return cached(("standings", season), TTL_DEFAULT, load)
+
+def get_player_gamelog(player_id: int, season: str, season_type: str = "Regular Season"):
+    """PlayerGameLog for one season (newest game first), cached for 30min."""
+    def load():
+        return nbacall_retry(
+            PlayerGameLog,
+            player_id=player_id,
+            season=season,
+            season_type_all_star=season_type,
+        ).get_data_frames()[0]
+
+    return cached(("player_gamelog", player_id, season, season_type), TTL_DEFAULT, load)
 
 def get_player_positions():
     """

@@ -167,6 +167,27 @@ class PlayerApiTest(unittest.TestCase):
         self.assertAlmostEqual(sel["TOV_P36"], 4.0 * 36 / 35)
 
 
+class GameLogApiTest(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+
+    def test_games_oldest_first_with_iso_dates(self):
+        df = pd.DataFrame([
+            {"Game_ID": "2", "GAME_DATE": "Apr 12, 2026", "MATCHUP": "LAL vs. UTA", "WL": "W", "PTS": 18},
+            {"Game_ID": "1", "GAME_DATE": "Oct 21, 2025", "MATCHUP": "LAL @ GSW", "WL": "L", "PTS": 25},
+        ])
+        with mock.patch.object(app_module, "get_player_gamelog", return_value=df) as get:
+            data = self.client.get("/api/player/2544/gamelog?season=2025-26").get_json()
+        self.assertEqual([g["GAME_DATE"] for g in data["games"]], ["2025-10-21", "2026-04-12"])
+        self.assertEqual(get.call_args.args, (2544, "2025-26", "Regular Season"))
+
+    def test_playoffs_season_type(self):
+        with mock.patch.object(app_module, "get_player_gamelog", return_value=pd.DataFrame()) as get:
+            data = self.client.get("/api/player/2544/gamelog?season=2018-19&season_type=playoffs").get_json()
+        self.assertEqual(get.call_args.args[2], "Playoffs")
+        self.assertEqual(data["games"], [])
+
+
 class StandingsApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()

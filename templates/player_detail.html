@@ -3,6 +3,7 @@
 {% block title %}Player Details{% endblock %}
 
 {% block head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/static/css/player_detail.css">
 {% endblock %}
 
@@ -41,6 +42,36 @@
           <div class="loading">Loading season stats…</div>
         </div>
       </section>
+
+      <section class="gamelog">
+        <div class="gamelog-header">
+          <h3 id="gamelog-title">Game Log</h3>
+          <div class="gamelog-controls">
+            <label>Type
+              <select id="gamelog-type">
+                <option value="regular">Regular Season</option>
+                <option value="playoffs">Playoffs</option>
+              </select>
+            </label>
+            <label>Stat
+              <select id="gamelog-stat">
+                <option value="PTS">Points</option>
+                <option value="REB">Rebounds</option>
+                <option value="AST">Assists</option>
+                <option value="MIN">Minutes</option>
+                <option value="FG3M">3PM</option>
+                <option value="PLUS_MINUS">+/-</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <p id="gamelog-status" class="loading">Select a season to see its game log.</p>
+        <div id="gamelog-body" hidden>
+          <div class="gamelog-chart"><canvas id="gamelog-chart"></canvas></div>
+          <p class="gamelog-legend">Bars: each game (green = win, red = loss) • Line: 5-game rolling average</p>
+          <div class="career-stats-table gamelog-table"><table id="gamelog-table"></table></div>
+        </div>
+      </section>
     </main>
   </div>
 {% endblock %}
@@ -53,6 +84,8 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     loadPlayer();
+    document.getElementById('gamelog-type').addEventListener('change', () => loadGameLog(currentSeason));
+    document.getElementById('gamelog-stat').addEventListener('change', renderGameLogChart);
   });
 
   async function loadPlayer() {
@@ -113,6 +146,7 @@
 
   async function selectSeason(seasonId) {
     currentSeason = seasonId;
+    loadGameLog(seasonId);
     document.querySelectorAll('#season-list .season-item').forEach(li => {
       li.classList.toggle('active', li.dataset.season === seasonId);
     });
@@ -262,6 +296,142 @@
           <td>${pct(s.FT_PCT)}</td>
         </tr>`;
     }).join('');
+  }
+
+  // ---- Game log ----
+  const ROLLING_WINDOW = 5;
+  let gameLog = [];
+  let gameLogChart = null;
+  let gameLogRequest = 0;
+
+  async function loadGameLog(seasonId) {
+    if (!seasonId) return;
+    const requestId = ++gameLogRequest;
+    const type = document.getElementById('gamelog-type').value;
+    const status = document.getElementById('gamelog-status');
+    const body = document.getElementById('gamelog-body');
+    document.getElementById('gamelog-title').textContent =
+      `Game Log: ${seasonId} ${type === 'playoffs' ? 'Playoffs' : 'Regular Season'}`;
+    status.textContent = 'Loading game log…';
+    status.hidden = false;
+    body.hidden = true;
+
+    try {
+      const res = await fetch(`/api/player/${playerId}/gamelog?season=${encodeURIComponent(seasonId)}&season_type=${type}`);
+      const data = await res.json();
+      if (requestId !== gameLogRequest) return;  // a newer season/type was selected
+      if (!data.success) throw new Error(data.error);
+      gameLog = data.games;
+      if (!gameLog.length) {
+        status.textContent = type === 'playoffs'
+          ? `No playoff games in ${seasonId}.`
+          : `No games logged for ${seasonId}.`;
+        return;
+      }
+      status.hidden = true;
+      body.hidden = false;
+      renderGameLogChart();
+      renderGameLogTable();
+    } catch (e) {
+      if (requestId !== gameLogRequest) return;
+      console.error(e);
+      status.textContent = e.message || 'Failed to load game log.';
+    }
+  }
+
+  function rollingAverage(values, window) {
+    return values.map((_, i) => {
+      const slice = values.slice(Math.max(0, i - window + 1), i + 1);
+      return +(slice.reduce((a, b) => a + b, 0) / slice.length).toFixed(1);
+    });
+  }
+
+  function renderGameLogChart() {
+    if (!gameLog.length || typeof Chart === 'undefined') return;
+    const select = document.getElementById('gamelog-stat');
+    const stat = select.value;
+    const label = select.options[select.selectedIndex].text;
+    const values = gameLog.map(g => Number(g[stat]) || 0);
+    const labels = gameLog.map(g => `${g.GAME_DATE.slice(5)} ${g.MATCHUP.slice(-3)}`);
+
+    if (gameLogChart) gameLogChart.destroy();
+    Chart.defaults.font.family = "'Courier New', monospace";
+    gameLogChart = new Chart(document.getElementById('gamelog-chart'), {
+      data: {
+        labels,
+        datasets: [
+          {
+            type: 'line',
+            label: `${ROLLING_WINDOW}-game avg`,
+            data: rollingAverage(values, ROLLING_WINDOW),
+            borderColor: '#000000',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+          },
+          {
+            type: 'bar',
+            label,
+            data: values,
+            backgroundColor: gameLog.map(g => g.WL === 'W' ? 'rgba(76, 175, 80, 0.75)' : 'rgba(255, 94, 91, 0.75)'),
+            borderColor: '#000000',
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: items => {
+                const g = gameLog[items[0].dataIndex];
+                return `${g.GAME_DATE} ${g.MATCHUP} (${g.WL})`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { maxRotation: 60, autoSkip: true, maxTicksLimit: 20 }, grid: { display: false } },
+          y: { title: { display: true, text: label } },
+        },
+      },
+    });
+  }
+
+  function renderGameLogTable() {
+    const cols = [
+      ['Date', g => g.GAME_DATE], ['Matchup', g => g.MATCHUP], ['W/L', g => g.WL],
+      ['MIN', g => g.MIN], ['PTS', g => g.PTS], ['REB', g => g.REB], ['AST', g => g.AST],
+      ['STL', g => g.STL], ['BLK', g => g.BLK], ['TOV', g => g.TOV],
+      ['FG', g => `${g.FGM}-${g.FGA}`], ['3P', g => `${g.FG3M}-${g.FG3A}`],
+      ['FT', g => `${g.FTM}-${g.FTA}`],
+      ['+/-', g => g.PLUS_MINUS == null ? '' : (g.PLUS_MINUS > 0 ? '+' : '') + g.PLUS_MINUS],
+    ];
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    cols.forEach(([name]) => {
+      const th = document.createElement('th');
+      th.textContent = name;
+      hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+
+    const tbody = document.createElement('tbody');
+    [...gameLog].reverse().forEach(g => {  // newest first
+      const tr = document.createElement('tr');
+      cols.forEach(([, get]) => {
+        const td = document.createElement('td');
+        td.textContent = get(g) ?? '';
+        tr.appendChild(td);
+      });
+      if (g.WL) tr.classList.add(g.WL === 'W' ? 'win' : 'loss');
+      tbody.appendChild(tr);
+    });
+    document.getElementById('gamelog-table').replaceChildren(thead, tbody);
   }
 
   // compare helper
