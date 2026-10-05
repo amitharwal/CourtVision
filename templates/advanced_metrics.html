@@ -37,6 +37,14 @@
                 </div>
 
                 <div class="control-group">
+                    <label for="season-type">Season Type</label>
+                    <select id="season-type">
+                        <option value="regular">Regular Season</option>
+                        <option value="playoffs">Playoffs</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
                     <label for="min-games">Min Games Played</label>
                     <input type="number" id="min-games" value="20" min="1" max="82">
                 </div>
@@ -129,12 +137,21 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             setupEventListeners();
+            // ?metric=USG_PCT&season=2024-25&type=playoffs&min_games=4 restores and loads a view
+            if (UrlState.apply('metric-select', 'metric')) {
+                currentMetric = document.getElementById('metric-select').value;
+            }
+            UrlState.apply('season-type', 'type');
+            UrlState.apply('min-games', 'min_games');
+            const hasSeason = UrlState.apply('season-select', 'season');
             updateMetricExplanation();
+            if (hasSeason) loadMetrics();
         });
 
         function setupEventListeners() {
             document.getElementById('metric-select').addEventListener('change', function() {
                 currentMetric = this.value;
+                UrlState.set({ metric: currentMetric });
                 updateMetricExplanation();
                 if (playersData.length > 0) {
                     sortByCurrentMetric();
@@ -146,6 +163,13 @@
             });
 
             document.getElementById('load-metrics').addEventListener('click', loadMetrics);
+
+            // Playoff runs are short, so swap the default games threshold with the season type.
+            document.getElementById('season-type').addEventListener('change', function() {
+                const minGames = document.getElementById('min-games');
+                if (this.value === 'playoffs' && minGames.value === '20') minGames.value = '4';
+                if (this.value === 'regular' && minGames.value === '4') minGames.value = '20';
+            });
 
             document.querySelectorAll('.viz-tab').forEach(tab => {
                 tab.addEventListener('click', function() {
@@ -169,10 +193,12 @@
 
             const season = document.getElementById('season-select').value;
             const minGames = document.getElementById('min-games').value;
+            const seasonType = document.getElementById('season-type').value;
+            UrlState.set({ metric: currentMetric, season, type: seasonType, min_games: minGames });
 
             try {
                 // Load player data with metrics
-                const response = await fetch(`/api/players?season=${season}&sort_by=${currentMetric}`);
+                const response = await fetch(`/api/players?season=${season}&sort_by=${currentMetric}&season_type=${seasonType}`);
                 const data = await response.json();
 
                 if (data.success) {
@@ -183,7 +209,7 @@
                     if (!playersData.length) {
                         showMessage(data.data.length
                             ? `No players with at least ${minGames} games in ${season}. Try a lower minimum.`
-                            : `No regular-season stats for ${season} yet.`);
+                            : `No ${seasonType === 'playoffs' ? 'playoff' : 'regular-season'} stats for ${season}.`);
                         return;
                     }
 

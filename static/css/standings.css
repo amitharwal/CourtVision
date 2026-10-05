@@ -1,0 +1,274 @@
+:root {
+  --primary: #000000;
+  --secondary: #FFFFFF;
+  --accent: #FF5E5B;
+  --success: #4CAF50;
+  --warning: #FFC107;
+  --muted: #666666;
+  --light-gray: #f5f5f5;
+  --shadow: 6px 6px 0px var(--primary);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Courier New', monospace;
+}
+
+body {
+  background-color: var(--light-gray);
+  color: var(--primary);
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  min-width: 0;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 2px solid var(--primary);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 30px;
+  background-color: var(--secondary);
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+nav {
+  display: flex;
+  gap: 10px;
+}
+
+nav a {
+  text-decoration: none;
+  color: var(--primary);
+  font-weight: bold;
+  border: 2px solid var(--primary);
+  padding: 8px 16px;
+  transition: all 0.3s;
+  background-color: var(--secondary);
+}
+
+nav a:hover, nav a.active {
+  box-shadow: 3px 3px 0px var(--primary);
+  transform: translate(-2px, -2px);
+  background-color: var(--accent);
+  color: var(--secondary);
+}
+
+footer {
+  text-align: center;
+  font-size: 14px;
+  color: var(--primary);
+  margin-top: 60px;
+}
+
+footer a {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+/* ---- Standings ---- */
+
+[hidden] {
+  display: none !important;
+}
+
+.page-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.page-header h2 {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.page-header p {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.standings-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+  border: 2px solid var(--primary);
+  padding: 20px 25px;
+  box-shadow: var(--shadow);
+  margin-bottom: 30px;
+  background-color: var(--secondary);
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.control-group label {
+  font-weight: bold;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.control-group select {
+  padding: 10px;
+  border: 2px solid var(--primary);
+  background-color: var(--secondary);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.legend {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--primary);
+}
+
+.swatch.playoff,
+tr.playoff td:first-child {
+  background-color: var(--success);
+}
+
+.swatch.playin,
+tr.playin td:first-child {
+  background-color: var(--warning);
+}
+
+.status {
+  text-align: center;
+  padding: 40px 20px;
+  font-weight: bold;
+}
+
+.standings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 30px;
+}
+
+.conference {
+  min-width: 0;
+  border: 2px solid var(--primary);
+  box-shadow: var(--shadow);
+  background-color: var(--secondary);
+}
+
+.conference h3 {
+  padding: 15px 20px;
+  border-bottom: 2px solid var(--primary);
+  background-color: var(--primary);
+  color: var(--secondary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.conference table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.conference th,
+.conference td {
+  padding: 10px 12px;
+  text-align: center;
+  white-space: nowrap;
+  border-bottom: 1px solid #ddd;
+}
+
+.conference th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 2px solid var(--primary);
+}
+
+.conference .team-col {
+  text-align: left;
+}
+
+.conference td.team-col a {
+  color: var(--primary);
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.conference td.team-col a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.conference td:first-child {
+  font-weight: bold;
+}
+
+.conference tbody tr:hover {
+  background-color: var(--light-gray);
+}
+
+.conference tr.cutoff td {
+  border-bottom: 2px dashed var(--primary);
+}
+
+.positive {
+  color: #2E7D32;
+  font-weight: bold;
+}
+
+.negative {
+  color: #C62828;
+  font-weight: bold;
+}
+
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  nav {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .control-group {
+    width: 100%;
+  }
+}

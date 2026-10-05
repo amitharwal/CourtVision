@@ -101,6 +101,12 @@
     // Initialize
     document.addEventListener('DOMContentLoaded', function () {
         setupEventListeners();
+        // ?team_id=1610612747&season=2024-25 (e.g. from the Standings page) loads that team
+        UrlState.apply('season-select', 'season');
+        if (UrlState.apply('team-select', 'team_id')) {
+            currentTeamId = document.getElementById('team-select').value;
+            loadTeamData();
+        }
     });
 
     function setupEventListeners() {
@@ -129,6 +135,7 @@
     showLoading(true);
     hideAllSections();
     const season = document.getElementById('season-select').value;
+    UrlState.set({ team_id: currentTeamId, season });
 
     // Fetch & parse JSON
     let data;

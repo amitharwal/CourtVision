@@ -78,7 +78,7 @@ class PagesTest(unittest.TestCase):
 
     def test_pages_render_with_shared_layout(self):
         for url in ["/", "/players", "/team-trends", "/shot-charts", "/compare",
-                    "/advanced-metrics", "/privacy_policy", "/player/2544"]:
+                    "/advanced-metrics", "/privacy_policy", "/player/2544", "/standings"]:
             with self.subTest(url=url):
                 resp = self.client.get(url)
                 self.assertEqual(resp.status_code, 200)
@@ -117,7 +117,7 @@ class PlayersApiTest(unittest.TestCase):
         frames = _league_frames()
         patches = [
             mock.patch.object(app_module, "get_league_player_stats",
-                              side_effect=lambda season, measure="Base": frames[measure]),
+                              side_effect=lambda season, measure="Base", season_type=None: frames[measure]),
             mock.patch.object(app_module, "get_player_positions",
                               return_value={1: "G-F", 2: "C"}),
         ]
@@ -142,6 +142,12 @@ class PlayersApiTest(unittest.TestCase):
         self.assertEqual(list(filtered), ["Alpha Guard"])
         self.assertEqual(filtered["Alpha Guard"]["USG_PCT"], unfiltered["USG_PCT"])
 
+    def test_playoffs_season_type_passed_through(self):
+        self._players("&season_type=playoffs")
+        season_types = {c.kwargs.get("season_type") or c.args[2]
+                        for c in app_module.get_league_player_stats.call_args_list}
+        self.assertEqual(season_types, {"Playoffs"})
+
     def test_positions_joined_and_filterable(self):
         self.assertEqual(self._players()["Alpha Guard"]["POSITION"], "G-F")
         self.assertEqual(list(self._players("&position=C")), ["Beta Center"])
@@ -165,6 +171,60 @@ class PlayerApiTest(unittest.TestCase):
         self.assertEqual(sel["TOV_TOTAL"], 200)
         self.assertEqual(sel["TOV"], 4.0)
         self.assertAlmostEqual(sel["TOV_P36"], 4.0 * 36 / 35)
+
+
+class SearchPlayersApiTest(unittest.TestCase):
+    def test_lookup_by_ids_keeps_order_and_skips_unknown(self):
+        client = app_module.app.test_client()
+        data = client.get("/api/search-players?ids=201939,2544,999999999,abc").get_json()
+        self.assertEqual([p["name"] for p in data["players"]], ["Stephen Curry", "LeBron James"])
+
+
+class GameLogApiTest(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+
+    def test_games_oldest_first_with_iso_dates(self):
+        df = pd.DataFrame([
+            {"Game_ID": "2", "GAME_DATE": "Apr 12, 2026", "MATCHUP": "LAL vs. UTA", "WL": "W", "PTS": 18},
+            {"Game_ID": "1", "GAME_DATE": "Oct 21, 2025", "MATCHUP": "LAL @ GSW", "WL": "L", "PTS": 25},
+        ])
+        with mock.patch.object(app_module, "get_player_gamelog", return_value=df) as get:
+            data = self.client.get("/api/player/2544/gamelog?season=2025-26").get_json()
+        self.assertEqual([g["GAME_DATE"] for g in data["games"]], ["2025-10-21", "2026-04-12"])
+        self.assertEqual(get.call_args.args, (2544, "2025-26", "Regular Season"))
+
+    def test_playoffs_season_type(self):
+        with mock.patch.object(app_module, "get_player_gamelog", return_value=pd.DataFrame()) as get:
+            data = self.client.get("/api/player/2544/gamelog?season=2018-19&season_type=playoffs").get_json()
+        self.assertEqual(get.call_args.args[2], "Playoffs")
+        self.assertEqual(data["games"], [])
+
+
+class StandingsApiTest(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+
+    def _row(self, team_id, city, conf, rank, wins):
+        return {"TeamID": team_id, "TeamCity": city, "TeamName": "Team", "Conference": conf,
+                "PlayoffRank": rank, "WINS": wins, "LOSSES": 82 - wins, "WinPCT": wins / 82,
+                "ConferenceGamesBack": 0.0, "ConferenceRecord": "30-22", "HOME": "25-16",
+                "ROAD": "20-21", "L10": "6-4", "strCurrentStreak": "W 2 ", "PointsPG": 115.04,
+                "OppPointsPG": 110.0, "DiffPointsPG": 5.04}
+
+    def test_splits_and_orders_conferences(self):
+        df = pd.DataFrame([self._row(1, "East Two", "East", 2, 50), self._row(2, "West One", "West", 1, 60),
+                           self._row(3, "East One", "East", 1, 55)])
+        with mock.patch.object(app_module, "get_standings", return_value=df):
+            data = self.client.get("/api/standings?season=2024-25").get_json()
+        self.assertEqual([r["team"] for r in data["east"]], ["East One Team", "East Two Team"])
+        self.assertEqual(len(data["west"]), 1)
+        self.assertEqual(data["east"][0]["streak"], "W 2")
+
+    def test_empty_season_is_404(self):
+        with mock.patch.object(app_module, "get_standings", return_value=pd.DataFrame()):
+            resp = self.client.get("/api/standings?season=2024-25")
+        self.assertEqual(resp.status_code, 404)
 
 
 class ShotChartApiTest(unittest.TestCase):

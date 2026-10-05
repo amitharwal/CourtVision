@@ -22,11 +22,14 @@ from nba_client import (
     cached,
     get_league_player_stats,
     get_league_team_stats,
+    get_player_gamelog,
     get_player_positions,
     get_seasons,
+    get_standings,
     get_team_estimated_metrics,
     get_team_gamelog_cached,
     nbacall_retry,
+    parse_season_type,
 )
 
 # ------------------------------------------------------------------------------
@@ -38,6 +41,7 @@ NAV_LINKS = [
     ("home", "Home"),
     ("players_page", "Players"),
     ("team_trends", "Teams"),
+    ("standings", "Standings"),
     ("shot_charts", "Shot Charts"),
     ("compare_players", "Compare"),
     ("advanced_metrics", "Adv. Metrics"),
@@ -112,6 +116,49 @@ def team_trends():
     team_list = teams.get_teams()
     seasons = get_seasons()
     return render_template("team_trends.html", teams=team_list, seasons=seasons)
+
+@app.route("/standings")
+def standings():
+    return render_template("standings.html", seasons=get_seasons())
+
+@app.route("/api/standings")
+def api_standings():
+    season = request.args.get("season") or get_seasons()[0]
+
+    try:
+        df = get_standings(season)
+    except Exception as e:
+        print(f"[ERROR] /api/standings: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch standings from NBA API."}), 503
+
+    if df is None or df.empty:
+        return jsonify({"success": False, "error": f"No standings for {season}."}), 404
+
+    def row(r):
+        return {
+            "team_id": int(r["TeamID"]),
+            "team": f"{r['TeamCity']} {r['TeamName']}",
+            "rank": int(r["PlayoffRank"]),
+            "wins": int(r["WINS"]),
+            "losses": int(r["LOSSES"]),
+            "win_pct": round(float(r["WinPCT"]), 3),
+            "games_back": float(r["ConferenceGamesBack"]),
+            "conf_record": r["ConferenceRecord"],
+            "home": r["HOME"],
+            "road": r["ROAD"],
+            "last10": r["L10"],
+            "streak": (r["strCurrentStreak"] or "").strip(),
+            "ppg": round(float(r["PointsPG"]), 1),
+            "opp_ppg": round(float(r["OppPointsPG"]), 1),
+            "diff": round(float(r["DiffPointsPG"]), 1),
+        }
+
+    conferences = {}
+    for conf in ("East", "West"):
+        sub = df[df["Conference"] == conf].sort_values("PlayoffRank")
+        conferences[conf.lower()] = [row(r) for _, r in sub.iterrows()]
+
+    return jsonify({"success": True, "season": season, **conferences})
 
 @app.route("/compare")
 def compare_players():
@@ -347,14 +394,15 @@ def get_players():
         position_filter = request.args.get("position", "all")
         sort_by = request.args.get("sort_by", "PTS")
         search = request.args.get("search", "").lower()
+        season_type = parse_season_type(request.args.get("season_type"))
 
         # Compute everything on the full league table first, then filter, so that
         # league-relative metrics don't change with the search/team/position filter.
-        df = get_league_player_stats(season).copy()
+        df = get_league_player_stats(season, season_type=season_type).copy()
 
         # Official NBA advanced metrics (fractions, e.g. 0.312) replace local estimates.
         adv_cols = ["USG_PCT", "AST_PCT", "REB_PCT", "PIE"]
-        adv = get_league_player_stats(season, "Advanced")
+        adv = get_league_player_stats(season, "Advanced", season_type)
         df = df.merge(adv[["PLAYER_ID"] + adv_cols], on="PLAYER_ID", how="left")
         df[adv_cols] = df[adv_cols].fillna(0) * 100
 
@@ -486,6 +534,7 @@ def get_player_detail(player_id: int):
 
         seasons_regular = norm.get("SeasonTotalsRegularSeason", []) or []
         career_regular  = norm.get("CareerTotalsRegularSeason", []) or []
+        seasons_postseason = norm.get("SeasonTotalsPostSeason", []) or []
 
         # Sort newest -> oldest
         def season_key(row):
@@ -494,9 +543,10 @@ def get_player_detail(player_id: int):
             except Exception:
                 return -1
         seasons_regular = sorted(seasons_regular, key=season_key, reverse=True)
+        seasons_postseason = sorted(seasons_postseason, key=season_key, reverse=True)
 
-        # Available seasons list
-        available_seasons = [r.get("SEASON_ID") for r in seasons_regular if r.get("SEASON_ID")]
+        # Available seasons list (traded players have several rows per season)
+        available_seasons = list(dict.fromkeys(r.get("SEASON_ID") for r in seasons_regular if r.get("SEASON_ID")))
 
         # Helper to compute derived metrics for a season row
         def enrich(row):
@@ -562,6 +612,7 @@ def get_player_detail(player_id: int):
 
         # Enrich all rows for front‑end (keeps TEAM_ABBREVIATION from the season)
         seasons_regular = [enrich(r) for r in seasons_regular]
+        seasons_postseason = [enrich(r) for r in seasons_postseason]
 
         # Determine selected_season
         selected = None
@@ -574,6 +625,7 @@ def get_player_detail(player_id: int):
             "success": True,
             "player_info": info,                 # current team/bio
             "seasons_regular": seasons_regular,  # enriched rows (newest->oldest)
+            "seasons_postseason": seasons_postseason,
             "career_regular": career_regular,
             "available_seasons": available_seasons,
             "selected_season": selected,
@@ -583,9 +635,37 @@ def get_player_detail(player_id: int):
         print(f"[ERROR] /api/player/{player_id}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/player/<int:player_id>/gamelog")
+def api_player_gamelog(player_id: int):
+    season = request.args.get("season") or get_seasons()[0]
+    season_type = parse_season_type(request.args.get("season_type"))
+
+    try:
+        df = get_player_gamelog(player_id, season, season_type)
+    except Exception as e:
+        print(f"[ERROR] /api/player/{player_id}/gamelog: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch game log from NBA API."}), 503
+
+    if df is None or df.empty:
+        return jsonify({"success": True, "season": season, "season_type": season_type, "games": []})
+
+    columns = ["MATCHUP", "WL", "MIN", "PTS", "REB", "AST", "STL", "BLK", "TOV",
+               "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA", "PLUS_MINUS"]
+    games = df.iloc[::-1]  # oldest -> newest, for charting
+    dates = pd.to_datetime(games["GAME_DATE"], format="%b %d, %Y", errors="coerce")
+    records = []
+    for (_, g), date in zip(games.iterrows(), dates):
+        rec = {c: g[c] for c in columns if c in g}
+        rec["GAME_ID"] = g["Game_ID"]
+        rec["GAME_DATE"] = date.strftime("%Y-%m-%d") if pd.notna(date) else g["GAME_DATE"]
+        records.append(rec)
+
+    return jsonify({"success": True, "season": season, "season_type": season_type, "games": records})
+
 @app.route("/api/shot-chart/<int:player_id>")
 def api_shot_chart(player_id: int):
     season = request.args.get("season", get_seasons()[0])
+    season_type = parse_season_type(request.args.get("season_type"))
 
     def load():
         return nbacall_retry(
@@ -593,18 +673,19 @@ def api_shot_chart(player_id: int):
             team_id=0,
             player_id=player_id,
             season_nullable=season,
-            season_type_all_star="Regular Season",
+            season_type_all_star=season_type,
             context_measure_simple="FGA",  # the default ("PTS") returns made shots only
         ).get_data_frames()[0]
 
     try:
-        df = cached(("shot_chart", player_id, season), TTL_DEFAULT, load)
+        df = cached(("shot_chart", player_id, season, season_type), TTL_DEFAULT, load)
     except Exception as e:
         print(f"[ERROR] /api/shot-chart/{player_id}: {e}")
         return jsonify({"success": False, "error": "Unable to fetch shot data from NBA API."}), 503
 
     if df is None or df.empty:
-        return jsonify({"success": False, "error": "No shot data for this player/season."}), 404
+        label = "playoff shots" if season_type == "Playoffs" else "shot data"
+        return jsonify({"success": False, "error": f"No {label} for this player in {season}."}), 404
 
     columns = [
         "LOC_X",
@@ -631,8 +712,9 @@ def export_players():
         season = request.args.get("season", get_seasons()[0])
         team_code = request.args.get("team", "all")
         sort_by = request.args.get("sort_by", "PTS")
+        season_type = parse_season_type(request.args.get("season_type"))
 
-        df = get_league_player_stats(season)
+        df = get_league_player_stats(season, season_type=season_type)
         if team_code != "all":
             df = df[df["TEAM_ABBREVIATION"] == team_code]
         if sort_by in df.columns:
@@ -657,6 +739,16 @@ def export_players():
 @app.route("/api/search-players")
 def search_players():
     try:
+        # ?ids=2544,201939 looks players up by id (used to restore shared links)
+        ids = request.args.get("ids")
+        if ids:
+            found = []
+            for pid in ids.split(",")[:10]:
+                p = players.find_player_by_id(int(pid)) if pid.strip().isdigit() else None
+                if p:
+                    found.append({"id": p["id"], "name": p["full_name"], "is_active": p["is_active"]})
+            return jsonify({"success": True, "players": found})
+
         query = request.args.get("q", "").lower()
         all_players = players.get_players()
         matching = [

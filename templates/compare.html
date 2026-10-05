@@ -31,6 +31,10 @@
                         <option value="{{ season }}">{{ season }}</option>
                     {% endfor %}
                 </select>
+                <select id="season-type" aria-label="Season type">
+                    <option value="regular">Regular Season</option>
+                    <option value="playoffs">Playoffs</option>
+                </select>
                 <button id="refresh-comparison" class="refresh-btn">Refresh</button>
             </div>
 
@@ -57,13 +61,22 @@
       .addEventListener('click', loadComparison);
     document.getElementById('season-select')
       .addEventListener('change', loadComparison);
+    document.getElementById('season-type')
+      .addEventListener('change', loadComparison);
   }
 
-  function loadSavedPlayers() {
-    const saved = JSON.parse(localStorage.getItem('compareList') || '[]');
+  // ?players=2544,201939&season=2024-25&type=playoffs overrides the saved list
+  async function loadSavedPlayers() {
+    UrlState.apply('season-select', 'season');
+    UrlState.apply('season-type', 'type');
+    const ids = (UrlState.get('players') || '').split(',').map(Number).filter(Boolean).slice(0, 4);
+    const saved = ids.length
+      ? (await UrlState.playerNames(ids)).map(p => ({ id: p.id, name: p.name }))
+      : JSON.parse(localStorage.getItem('compareList') || '[]');
     saved.forEach(p => {
       if (selectedPlayers.length < 4) selectedPlayers.push(p);
     });
+    if (ids.length) saveToLocalStorage();
     updateSelectedDisplay();
     if (selectedPlayers.length) loadComparison();
   }
@@ -118,6 +131,7 @@
   }
 
   function updateSelectedDisplay() {
+    UrlState.set({ players: selectedPlayers.map(p => p.id).join(',') });
     const c = document.getElementById('selected-players');
     if (!selectedPlayers.length) {
       c.innerHTML = `<div class="empty-state">No players selected…</div>`;
@@ -139,6 +153,9 @@
     const content = document.getElementById('comparison-content');
     content.innerHTML = '<div class="loading">Loading player stats…</div>';
     const season = document.getElementById('season-select').value;
+    const playoffs = document.getElementById('season-type').value === 'playoffs';
+    const typeLabel = playoffs ? 'playoff' : 'regular-season';
+    UrlState.set({ season, type: playoffs ? 'playoffs' : 'regular' });
 
     try {
       const results = await Promise.all(
@@ -154,7 +171,8 @@
         if (!res.success) throw new Error(res.error || 'API error');
         // Season rows from /api/player; a traded player has one row per team
         // plus a combined "TOT" row, which is the one to compare.
-        const rows = (res.seasons_regular || []).filter(r => r.SEASON_ID === season);
+        const seasonRows = (playoffs ? res.seasons_postseason : res.seasons_regular) || [];
+        const rows = seasonRows.filter(r => r.SEASON_ID === season);
         const rec = rows.find(r => r.TEAM_ABBREVIATION === 'TOT') || rows[0];
         if (!rec) {
           missing.push(selectedPlayers[idx].name);
@@ -173,14 +191,14 @@
       });
 
       if (missing.length === selectedPlayers.length) {
-        content.innerHTML = `<div class="error">No ${season} regular-season stats for the selected players.</div>`;
+        content.innerHTML = `<div class="error">No ${season} ${typeLabel} stats for the selected players.</div>`;
         return;
       }
       displayComparison();
       if (missing.length) {
         const note = document.createElement('div');
         note.className = 'comparison-note';
-        note.textContent = `No ${season} regular-season stats for: ${missing.join(', ')}`;
+        note.textContent = `No ${season} ${typeLabel} stats for: ${missing.join(', ')}`;
         content.prepend(note);
       }
     } catch (e) {

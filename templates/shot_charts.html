@@ -30,6 +30,14 @@
             </div>
 
             <div class="control-group">
+                <label for="season-type">Season Type</label>
+                <select id="season-type">
+                    <option value="regular">Regular Season</option>
+                    <option value="playoffs">Playoffs</option>
+                </select>
+            </div>
+
+            <div class="control-group">
                 <label for="shot-type">Shot Type</label>
                 <select id="shot-type">
                     <option value="all">All Shots</option>
@@ -106,7 +114,22 @@
         document.addEventListener('DOMContentLoaded', function() {
             setupEventListeners();
             drawCourt();
+            restoreFromUrl();
         });
+
+        // ?player=2544&season=2025-26&type=playoffs&shot=made&period=4
+        async function restoreFromUrl() {
+            UrlState.apply('season-select', 'season');
+            UrlState.apply('season-type', 'type');
+            UrlState.apply('shot-type', 'shot');
+            UrlState.apply('period-select', 'period');
+            const id = parseInt(UrlState.get('player'), 10);
+            if (!id) return;
+            const [player] = await UrlState.playerNames([id]);
+            if (!player) return;
+            selectPlayer(player.id, player.name);
+            loadShotChart();
+        }
 
         function setupEventListeners() {
             document.getElementById('player-search').addEventListener('input', handlePlayerSearch);
@@ -175,6 +198,8 @@
             document.getElementById('player-search').value = '';
             document.getElementById('selected-player').style.display = 'none';
             document.getElementById('chart-container').style.display = 'none';
+            shotData = [];
+            UrlState.set({ player: null });
         }
 
         async function loadShotChart() {
@@ -187,13 +212,15 @@
             document.getElementById('chart-container').style.display = 'none';
 
             const season = document.getElementById('season-select').value;
+            const seasonType = document.getElementById('season-type').value;
 
             try {
-                const response = await fetch(`/api/shot-chart/${selectedPlayer.id}?season=${season}`);
+                const response = await fetch(`/api/shot-chart/${selectedPlayer.id}?season=${season}&season_type=${seasonType}`);
                 const data = await response.json();
 
                 if (data.success) {
                     shotData = data.shots;
+                    UrlState.set({ player: selectedPlayer.id, season, type: seasonType });
                     displayShotChart();
                     document.getElementById('chart-container').style.display = 'block';
                 } else {
@@ -318,6 +345,9 @@
         }
 
         function filterShots() {
+            const shot = document.getElementById('shot-type').value;
+            const period = document.getElementById('period-select').value;
+            UrlState.set({ shot: shot === 'all' ? null : shot, period: period === 'all' ? null : period });
             if (shotData.length > 0) displayShotChart();
         }
     </script>
