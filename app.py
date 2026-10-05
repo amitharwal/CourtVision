@@ -24,6 +24,7 @@ from nba_client import (
     get_league_team_stats,
     get_player_positions,
     get_seasons,
+    get_standings,
     get_team_estimated_metrics,
     get_team_gamelog_cached,
     nbacall_retry,
@@ -38,6 +39,7 @@ NAV_LINKS = [
     ("home", "Home"),
     ("players_page", "Players"),
     ("team_trends", "Teams"),
+    ("standings", "Standings"),
     ("shot_charts", "Shot Charts"),
     ("compare_players", "Compare"),
     ("advanced_metrics", "Adv. Metrics"),
@@ -112,6 +114,49 @@ def team_trends():
     team_list = teams.get_teams()
     seasons = get_seasons()
     return render_template("team_trends.html", teams=team_list, seasons=seasons)
+
+@app.route("/standings")
+def standings():
+    return render_template("standings.html", seasons=get_seasons())
+
+@app.route("/api/standings")
+def api_standings():
+    season = request.args.get("season") or get_seasons()[0]
+
+    try:
+        df = get_standings(season)
+    except Exception as e:
+        print(f"[ERROR] /api/standings: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch standings from NBA API."}), 503
+
+    if df is None or df.empty:
+        return jsonify({"success": False, "error": f"No standings for {season}."}), 404
+
+    def row(r):
+        return {
+            "team_id": int(r["TeamID"]),
+            "team": f"{r['TeamCity']} {r['TeamName']}",
+            "rank": int(r["PlayoffRank"]),
+            "wins": int(r["WINS"]),
+            "losses": int(r["LOSSES"]),
+            "win_pct": round(float(r["WinPCT"]), 3),
+            "games_back": float(r["ConferenceGamesBack"]),
+            "conf_record": r["ConferenceRecord"],
+            "home": r["HOME"],
+            "road": r["ROAD"],
+            "last10": r["L10"],
+            "streak": (r["strCurrentStreak"] or "").strip(),
+            "ppg": round(float(r["PointsPG"]), 1),
+            "opp_ppg": round(float(r["OppPointsPG"]), 1),
+            "diff": round(float(r["DiffPointsPG"]), 1),
+        }
+
+    conferences = {}
+    for conf in ("East", "West"):
+        sub = df[df["Conference"] == conf].sort_values("PlayoffRank")
+        conferences[conf.lower()] = [row(r) for _, r in sub.iterrows()]
+
+    return jsonify({"success": True, "season": season, **conferences})
 
 @app.route("/compare")
 def compare_players():

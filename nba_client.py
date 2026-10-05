@@ -12,6 +12,7 @@ from nba_api.stats.endpoints import (
     TeamGameLog,
     leaguedashplayerstats,
     leaguedashteamstats,
+    leaguestandingsv3,
     playerindex,
     teamestimatedmetrics,
 )
@@ -120,6 +121,17 @@ def get_team_estimated_metrics(season: str):
         ).get_data_frames()[0]
 
     return cached(("team_estimated_metrics", season), TTL_DEFAULT, load)
+
+def get_standings(season: str):
+    """LeagueStandingsV3 for the regular season, cached for 30min."""
+    def load():
+        return nbacall_retry(
+            leaguestandingsv3.LeagueStandingsV3,
+            season=season,
+            season_type="Regular Season",
+        ).get_data_frames()[0]
+
+    return cached(("standings", season), TTL_DEFAULT, load)
 
 def get_player_positions():
     """

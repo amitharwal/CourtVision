@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Standings{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="/static/css/standings.css">
+{% endblock %}
+
+{% block content %}
+    <section class="page-header">
+        <h2>League Standings</h2>
+        <p>Regular-season standings by conference</p>
+    </section>
+
+    <section class="standings-controls">
+        <div class="control-group">
+            <label for="season-select">Season</label>
+            <select id="season-select">
+                {% for season in seasons %}
+                    <option value="{{ season }}">{{ season }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="legend">
+            <span class="legend-item"><span class="swatch playoff"></span>Playoff seed</span>
+            <span class="legend-item" id="legend-playin"><span class="swatch playin"></span>Play-in</span>
+        </div>
+    </section>
+
+    <p id="standings-status" class="status">Loading standings...</p>
+
+    <div id="standings" class="standings-grid" hidden>
+        <section class="conference">
+            <h3>Eastern Conference</h3>
+            <div class="table-wrap"><table id="east-table"></table></div>
+        </section>
+        <section class="conference">
+            <h3>Western Conference</h3>
+            <div class="table-wrap"><table id="west-table"></table></div>
+        </section>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const COLUMNS = [
+    ['rank', '#'], ['team', 'Team'], ['wins', 'W'], ['losses', 'L'], ['win_pct', 'PCT'],
+    ['games_back', 'GB'], ['conf_record', 'Conf'], ['home', 'Home'], ['road', 'Road'],
+    ['last10', 'L10'], ['streak', 'Strk'], ['ppg', 'PPG'], ['opp_ppg', 'OPP'], ['diff', 'DIFF'],
+  ];
+
+  const seasonSelect = document.getElementById('season-select');
+  const status = document.getElementById('standings-status');
+  const grid = document.getElementById('standings');
+
+  document.addEventListener('DOMContentLoaded', () => {
+    seasonSelect.addEventListener('change', loadStandings);
+    loadStandings();
+  });
+
+  // The play-in tournament (seeds 7-10) started in 2020-21; before that the top 8 made the playoffs.
+  function seeding(season) {
+    const hasPlayIn = parseInt(season, 10) >= 2020;
+    return { playoff: hasPlayIn ? 6 : 8, playIn: hasPlayIn ? 10 : 0 };
+  }
+
+  function formatCell(key, value) {
+    if (key === 'win_pct') return value.toFixed(3).replace(/^0/, '');
+    if (key === 'games_back') return value === 0 ? '—' : value.toFixed(1);
+    if (key === 'diff') return (value > 0 ? '+' : '') + value.toFixed(1);
+    if (key === 'ppg' || key === 'opp_ppg') return value.toFixed(1);
+    return value;
+  }
+
+  function renderTable(table, rows, season) {
+    const { playoff, playIn } = seeding(season);
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    COLUMNS.forEach(([key, label]) => {
+      const th = document.createElement('th');
+      th.textContent = label;
+      if (key === 'team') th.className = 'team-col';
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      if (r.rank <= playoff) tr.className = 'playoff';
+      else if (r.rank <= playIn) tr.className = 'playin';
+      if (r.rank === playoff || r.rank === playIn) tr.classList.add('cutoff');
+
+      COLUMNS.forEach(([key]) => {
+        const td = document.createElement('td');
+        if (key === 'team') {
+          td.className = 'team-col';
+          const a = document.createElement('a');
+          a.href = `/team-trends?team_id=${r.team_id}&season=${encodeURIComponent(season)}`;
+          a.textContent = r.team;
+          td.appendChild(a);
+        } else {
+          td.textContent = formatCell(key, r[key]);
+          if (key === 'diff') td.classList.add(r.diff >= 0 ? 'positive' : 'negative');
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    table.replaceChildren(thead, tbody);
+  }
+
+  async function loadStandings() {
+    const season = seasonSelect.value;
+    status.textContent = 'Loading standings...';
+    status.hidden = false;
+    grid.hidden = true;
+
+    try {
+      const res = await fetch(`/api/standings?season=${encodeURIComponent(season)}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      if (seasonSelect.value !== season) return;  // a newer request is in flight
+
+      renderTable(document.getElementById('east-table'), data.east, season);
+      renderTable(document.getElementById('west-table'), data.west, season);
+      document.getElementById('legend-playin').hidden = !seeding(season).playIn;
+      status.hidden = true;
+      grid.hidden = false;
+    } catch (e) {
+      console.error(e);
+      status.textContent = e.message || 'Unable to load standings. Please try again.';
+    }
+  }
+</script>
+{% endblock %}
