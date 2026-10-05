@@ -509,7 +509,6 @@ def get_player_detail(player_id: int):
             r["APG"] = float(r.get("AST") or 0.0) / gp
             r["SPG"] = float(r.get("STL") or 0.0) / gp
             r["BPG"] = float(r.get("BLK") or 0.0) / gp
-            r["TOV"] = float(r.get("TOV") or 0.0) / gp
 
             # Totals (rename for clarity)
             r["MIN_TOTAL"] = min_tot
@@ -546,6 +545,8 @@ def get_player_detail(player_id: int):
             for k in ("PTS","REB","AST","STL","BLK","TOV","OREB","DREB","FG3M","FTA","FGA"):
                 val = float(r.get(k) or 0.0) / gp
                 r[f"{k}_P36"] = val * scale if scale else 0.0
+            # Per-game TOV, set last so the totals and per-36 above use the season total
+            r["TOV"] = r["TOV_TOTAL"] / gp
 
             # Ensure per‑season team name/abbr come from the season row (not current team)
             team_id = r.get("TEAM_ID")

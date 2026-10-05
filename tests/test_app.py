@@ -9,6 +9,13 @@ import nba_client
 from metrics import calculate_efficiency, calculate_true_shooting
 
 
+def setUpModule():
+    # Keep the suite offline: routes call get_seasons(), which checks the NBA API.
+    patcher = mock.patch.object(nba_client, "season_has_started", return_value=True)
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class MetricsTest(unittest.TestCase):
     def test_true_shooting(self):
         # 30 pts on 20 FGA and 10 FTA -> 30 / (2 * 24.4)
@@ -26,13 +33,17 @@ class MetricsTest(unittest.TestCase):
 
 
 class SeasonsTest(unittest.TestCase):
-    def _seasons_on(self, when):
-        with mock.patch.object(nba_client, "datetime") as dt:
+    def _seasons_on(self, when, started=True):
+        with mock.patch.object(nba_client, "datetime") as dt, \
+                mock.patch.object(nba_client, "season_has_started", return_value=started):
             dt.now.return_value = when
             return nba_client.get_seasons()
 
-    def test_new_season_starts_in_october(self):
-        self.assertEqual(self._seasons_on(datetime(2026, 10, 5))[0], "2026-27")
+    def test_new_season_listed_once_started(self):
+        self.assertEqual(self._seasons_on(datetime(2026, 10, 25))[0], "2026-27")
+
+    def test_new_season_hidden_until_started(self):
+        self.assertEqual(self._seasons_on(datetime(2026, 10, 5), started=False)[0], "2025-26")
 
     def test_before_october_uses_previous_season(self):
         self.assertEqual(self._seasons_on(datetime(2026, 9, 30))[0], "2025-26")
@@ -134,6 +145,26 @@ class PlayersApiTest(unittest.TestCase):
     def test_positions_joined_and_filterable(self):
         self.assertEqual(self._players()["Alpha Guard"]["POSITION"], "G-F")
         self.assertEqual(list(self._players("&position=C")), ["Beta Center"])
+
+
+class PlayerApiTest(unittest.TestCase):
+    def setUp(self):
+        nba_client._CACHE.clear()
+        self.client = app_module.app.test_client()
+
+    def test_turnover_total_and_per_game(self):
+        season = {"SEASON_ID": "2024-25", "TEAM_ID": 0, "TEAM_ABBREVIATION": "TOT", "GP": 50,
+                  "MIN": 1750.0, "PTS": 1400, "REB": 400, "AST": 400, "STL": 50, "BLK": 20,
+                  "TOV": 200, "FGA": 1000, "FGM": 450, "FTA": 300, "FTM": 240}
+        info = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame([{"PERSON_ID": 1}])]))
+        profile = mock.Mock(get_normalized_dict=mock.Mock(return_value={
+            "SeasonTotalsRegularSeason": [season], "CareerTotalsRegularSeason": []}))
+        with mock.patch.object(app_module, "nbacall_retry", side_effect=[info, profile]):
+            data = self.client.get("/api/player/1?season=2024-25").get_json()
+        sel = data["selected_season"]
+        self.assertEqual(sel["TOV_TOTAL"], 200)
+        self.assertEqual(sel["TOV"], 4.0)
+        self.assertAlmostEqual(sel["TOV_P36"], 4.0 * 36 / 35)
 
 
 class ShotChartApiTest(unittest.TestCase):

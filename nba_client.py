@@ -8,6 +8,7 @@ from time import time as _now
 
 import pandas as pd
 from nba_api.stats.endpoints import (
+    LeagueGameLog,
     TeamGameLog,
     leaguedashplayerstats,
     leaguedashteamstats,
@@ -131,20 +132,40 @@ def get_player_positions():
 
     return cached(("player_positions",), TTL_LONG, load)
 
+def season_has_started(season: str) -> bool:
+    """
+    True once the season's regular season has at least one game in LeagueGameLog.
+    Cached for an hour. If the NBA API is unreachable, assume a season has started
+    unless it's October, when the new season usually hasn't tipped off yet.
+    """
+    def load():
+        df = nbacall_retry(
+            LeagueGameLog,
+            season=season,
+            season_type_all_star="Regular Season",
+            retries=1,
+            timeout=10,
+        ).get_data_frames()[0]
+        return df is not None and not df.empty
+
+    try:
+        return cached(("season_started", season), 3600, load)
+    except Exception as e:
+        print(f"[WARN] season_has_started({season}) check failed: {e}")
+        return datetime.now().month != 10
+
 def get_seasons(start_year: int = FIRST_STATS_SEASON_YEAR):
     """
-    Ordered newest -> oldest.
-    NBA season spans two years. If it's October or later, treat the current calendar
-    year as the new season's start (e.g., December 2025 -> 2025-26). Before October,
-    the latest completed is last year's start (e.g., August 2025 -> 2024-25).
+    Ordered newest -> oldest, starting from the newest season with regular-season games.
+    NBA season spans two years. From October on, the current calendar year's season
+    (e.g., 2026-27) is a candidate; it's listed once its regular season has started.
     """
     today = datetime.now()
-    current_year = today.year
-    latest_start_year = current_year if today.month >= 10 else current_year - 1
+    latest_start_year = today.year if today.month >= 10 else today.year - 1
 
-    seasons = []
-    for year in range(latest_start_year, start_year - 1, -1):
-        seasons.append(f"{year}-{str(year + 1)[-2:]}")
+    seasons = [f"{year}-{str(year + 1)[-2:]}" for year in range(latest_start_year, start_year - 1, -1)]
+    if seasons and not season_has_started(seasons[0]):
+        seasons = seasons[1:]
     return seasons
 
 def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs):

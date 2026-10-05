@@ -426,3 +426,8 @@ footer a {
     flex-direction: column;
   }
 }
+.comparison-note {
+  padding: 12px 0;
+  color: var(--accent);
+  font-weight: bold;
+}

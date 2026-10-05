@@ -137,7 +137,11 @@
                 currentMetric = this.value;
                 updateMetricExplanation();
                 if (playersData.length > 0) {
+                    sortByCurrentMetric();
+                    document.querySelectorAll('.viz-tab').forEach(t =>
+                        t.classList.toggle('active', t.dataset.view === 'leaders'));
                     displayVisualization('leaders');
+                    generateInsights();
                 }
             });
 
@@ -173,20 +177,28 @@
 
                 if (data.success) {
                     // Filter by minimum games
-                    playersData = data.data.filter(p => p.GP >= minGames);
+                    playersData = data.data.filter(p => p.GP >= Number(minGames));
 
-                    // Show sections
                     document.getElementById('metrics-visualization').style.display = 'block';
-                    document.getElementById('metrics-insights').style.display = 'block';
+                    if (!playersData.length) {
+                        showMessage(data.data.length
+                            ? `No players with at least ${minGames} games in ${season}. Try a lower minimum.`
+                            : `No regular-season stats for ${season} yet.`);
+                        return;
+                    }
 
-                    // Display default view
+                    sortByCurrentMetric();
+                    document.getElementById('metrics-insights').style.display = 'block';
                     displayVisualization('leaders');
                     generateInsights();
                 } else {
-                    alert('Failed to load metrics data');
+                    document.getElementById('metrics-visualization').style.display = 'block';
+                    showMessage(data.error || 'Failed to load metrics data.');
                 }
             } catch (error) {
-                alert('Error loading metrics');
+                console.error(error);
+                document.getElementById('metrics-visualization').style.display = 'block';
+                showMessage('Error loading metrics. Please try again.');
             } finally {
                 showLoading(false);
             }
@@ -355,7 +367,18 @@
             return value.toFixed(1);
         }
 
-        function showLoading(show) {
+        function sortByCurrentMetric() {
+            playersData.sort((a, b) => (b[currentMetric] || 0) - (a[currentMetric] || 0));
+        }
+
+        function showMessage(text) {
+            const p = document.createElement('p');
+            p.className = 'no-data';
+            p.textContent = text;
+            document.getElementById('viz-content').replaceChildren(p);
+        }
+
+                function showLoading(show) {
             document.getElementById('loading').style.display = show ? 'flex' : 'none';
         }
 
