@@ -1,17 +1,18 @@
 import os
 import io
 import re
+import time
 import unicodedata
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from functools import lru_cache
 
+import click
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file
 from nba_api.stats.endpoints import (
     LeagueGameLog,
     ScoreboardV3,
-    TeamPlayerDashboard,
     commonplayerinfo,
     playerprofilev2,
     shotchartdetail,
@@ -32,8 +33,10 @@ from nba_client import (
     get_standings,
     get_team_estimated_metrics,
     get_team_gamelog_cached,
+    get_team_player_dashboard,
     nbacall_retry,
     parse_season_type,
+    warm_cache,
 )
 
 # ------------------------------------------------------------------------------
@@ -402,11 +405,7 @@ def api_roster_analysis(team_id):
     season = request.args.get("season", get_seasons()[0])
 
     try:
-        dfs = cached(
-            ("team_player_dashboard", str(team_id), season),
-            TTL_DEFAULT,
-            lambda: nbacall_retry(TeamPlayerDashboard, team_id=team_id, season=season).get_data_frames(),
-        )
+        dfs = get_team_player_dashboard(team_id, season)
         stats = dfs[1] if len(dfs) > 1 else pd.DataFrame()
         if stats is None or stats.empty:
             return jsonify(
@@ -856,6 +855,17 @@ def search_players():
         print(f"Error in /api/search-players: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+@app.cli.command("warm-cache")
+@click.option("--season", default=None, help="Season like 2025-26 (default: the current season).")
+@click.option("--skip-teams", is_flag=True, help="Skip the per-team game logs and rosters.")
+def warm_cache_command(season, skip_teams):
+    """Pre-fetch NBA data into the cache so first page loads are fast."""
+    started = time.time()
+    result = warm_cache(season, include_teams=not skip_teams)
+    click.echo(f"Warmed {len(result['ok'])} datasets for {result['season']} in {time.time() - started:.0f}s")
+    for name, error in result["failed"].items():
+        click.echo(f"  failed: {name}: {error}", err=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
