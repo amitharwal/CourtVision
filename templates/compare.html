@@ -217,7 +217,7 @@
       { name:'Advanced',    stats:['EFF'] }
     ];
 
-    let html = '<div class="comparison-grid">';
+    let html = `<div class="comparison-grid" style="--players: ${selectedPlayers.length}">`;
     // header
     html += '<div class="comparison-header-row"><div></div>';
     selectedPlayers.forEach(p => {

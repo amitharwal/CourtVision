@@ -1,0 +1,17 @@
+/* Shared rules for the layout in base.html. Page stylesheets load after this one. */
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  nav {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

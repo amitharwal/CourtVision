@@ -49,6 +49,12 @@
                     <input type="number" id="min-games" value="20" min="1" max="82">
                 </div>
 
+                <div class="control-group" id="min-attempts-group">
+                    <label for="min-attempts">Min Shot Attempts</label>
+                    <input type="number" id="min-attempts" value="300" min="0" step="10"
+                           title="True shooting attempts: FGA + 0.44 × FTA">
+                </div>
+
                 <button id="load-metrics" class="load-btn">Load Metrics</button>
             </div>
         </section>
@@ -132,7 +138,13 @@
         };
 
         let currentMetric = 'TS_PCT';
-        let playersData = [];
+        let allPlayers = [];   // everything /api/players returned for the loaded season
+        let playersData = [];  // allPlayers after the min games / min attempts filters
+        let loadedLabel = '';  // e.g. "2024-25 playoff", for empty-state messages
+
+        // Shot-attempt qualifier for True Shooting %, so tiny samples don't top the board.
+        const MIN_ATTEMPTS_DEFAULT = { regular: '300', playoffs: '50' };
+        const trueShootingAttempts = p => (p.FGA || 0) + 0.44 * (p.FTA || 0);
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -143,6 +155,11 @@
             }
             UrlState.apply('season-type', 'type');
             UrlState.apply('min-games', 'min_games');
+            if (!UrlState.apply('min-attempts', 'min_attempts')) {
+                document.getElementById('min-attempts').value =
+                    MIN_ATTEMPTS_DEFAULT[document.getElementById('season-type').value];
+            }
+            toggleAttemptsControl();
             const hasSeason = UrlState.apply('season-select', 'season');
             updateMetricExplanation();
             if (hasSeason) loadMetrics();
@@ -153,13 +170,18 @@
                 currentMetric = this.value;
                 UrlState.set({ metric: currentMetric });
                 updateMetricExplanation();
-                if (playersData.length > 0) {
-                    sortByCurrentMetric();
-                    document.querySelectorAll('.viz-tab').forEach(t =>
-                        t.classList.toggle('active', t.dataset.view === 'leaders'));
-                    displayVisualization('leaders');
-                    generateInsights();
-                }
+                toggleAttemptsControl();
+                if (allPlayers.length > 0) applyFilters();
+            });
+
+            ['min-games', 'min-attempts'].forEach(id => {
+                document.getElementById(id).addEventListener('change', () => {
+                    UrlState.set({
+                        min_games: document.getElementById('min-games').value,
+                        min_attempts: document.getElementById('min-attempts').value,
+                    });
+                    if (allPlayers.length > 0) applyFilters();
+                });
             });
 
             document.getElementById('load-metrics').addEventListener('click', loadMetrics);
@@ -169,6 +191,11 @@
                 const minGames = document.getElementById('min-games');
                 if (this.value === 'playoffs' && minGames.value === '20') minGames.value = '4';
                 if (this.value === 'regular' && minGames.value === '4') minGames.value = '20';
+                const minAttempts = document.getElementById('min-attempts');
+                const other = this.value === 'playoffs' ? 'regular' : 'playoffs';
+                if (minAttempts.value === MIN_ATTEMPTS_DEFAULT[other]) {
+                    minAttempts.value = MIN_ATTEMPTS_DEFAULT[this.value];
+                }
             });
 
             document.querySelectorAll('.viz-tab').forEach(tab => {
@@ -192,9 +219,12 @@
             hideAllSections();
 
             const season = document.getElementById('season-select').value;
-            const minGames = document.getElementById('min-games').value;
             const seasonType = document.getElementById('season-type').value;
-            UrlState.set({ metric: currentMetric, season, type: seasonType, min_games: minGames });
+            UrlState.set({
+                metric: currentMetric, season, type: seasonType,
+                min_games: document.getElementById('min-games').value,
+                min_attempts: document.getElementById('min-attempts').value,
+            });
 
             try {
                 // Load player data with metrics
@@ -202,22 +232,11 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // Filter by minimum games
-                    playersData = data.data.filter(p => p.GP >= Number(minGames));
-
-                    document.getElementById('metrics-visualization').style.display = 'block';
-                    if (!playersData.length) {
-                        showMessage(data.data.length
-                            ? `No players with at least ${minGames} games in ${season}. Try a lower minimum.`
-                            : `No ${seasonType === 'playoffs' ? 'playoff' : 'regular-season'} stats for ${season}.`);
-                        return;
-                    }
-
-                    sortByCurrentMetric();
-                    document.getElementById('metrics-insights').style.display = 'block';
-                    displayVisualization('leaders');
-                    generateInsights();
+                    allPlayers = data.data;
+                    loadedLabel = `${season} ${seasonType === 'playoffs' ? 'playoff' : 'regular-season'}`;
+                    applyFilters();
                 } else {
+                    allPlayers = [];
                     document.getElementById('metrics-visualization').style.display = 'block';
                     showMessage(data.error || 'Failed to load metrics data.');
                 }
@@ -391,6 +410,35 @@
                 return value.toFixed(1) + '%';
             }
             return value.toFixed(1);
+        }
+
+        function toggleAttemptsControl() {
+            document.getElementById('min-attempts-group').hidden = currentMetric !== 'TS_PCT';
+        }
+
+        // Filter the loaded players by the current thresholds, then redraw everything.
+        function applyFilters() {
+            const minGames = Number(document.getElementById('min-games').value) || 0;
+            const minAttempts = Number(document.getElementById('min-attempts').value) || 0;
+            const qualifyByAttempts = currentMetric === 'TS_PCT';
+            playersData = allPlayers.filter(p =>
+                p.GP >= minGames && (!qualifyByAttempts || trueShootingAttempts(p) >= minAttempts));
+
+            document.getElementById('metrics-visualization').style.display = 'block';
+            if (!playersData.length) {
+                document.getElementById('metrics-insights').style.display = 'none';
+                showMessage(allPlayers.length
+                    ? `No players meet these minimums for ${loadedLabel} stats. Try lower minimums.`
+                    : `No ${loadedLabel} stats.`);
+                return;
+            }
+
+            sortByCurrentMetric();
+            document.querySelectorAll('.viz-tab').forEach(t =>
+                t.classList.toggle('active', t.dataset.view === 'leaders'));
+            document.getElementById('metrics-insights').style.display = 'block';
+            displayVisualization('leaders');
+            generateInsights();
         }
 
         function sortByCurrentMetric() {

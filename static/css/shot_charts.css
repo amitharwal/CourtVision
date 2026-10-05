@@ -258,6 +258,10 @@ nav a:hover, nav a.active {
 
 .basketball-court {
   cursor: crosshair;
+  display: block;
+  width: 100%;
+  max-width: 500px;
+  height: auto;
 }
 
 .shot {
@@ -396,9 +400,7 @@ footer a {
     flex: 1 1 45%;
   }
 
-  .basketball-court {
-    width: 100%;
-    height: auto;
-    max-width: 500px;
+  .court-wrapper {
+    padding: 8px;
   }
 }

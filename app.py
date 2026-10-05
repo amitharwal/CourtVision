@@ -1,6 +1,9 @@
 import os
 import io
+import re
+import unicodedata
 from datetime import datetime
+from functools import lru_cache
 
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file
@@ -393,7 +396,7 @@ def get_players():
         team_code = request.args.get("team", "all")
         position_filter = request.args.get("position", "all")
         sort_by = request.args.get("sort_by", "PTS")
-        search = request.args.get("search", "").lower()
+        search = normalize_name(request.args.get("search", ""))
         season_type = parse_season_type(request.args.get("season_type"))
 
         # Compute everything on the full league table first, then filter, so that
@@ -417,7 +420,7 @@ def get_players():
         df["EFF"] = df.apply(lambda r: calculate_efficiency(r) / (r["GP"] or 1), axis=1)
 
         if search:
-            df = df[df["PLAYER_NAME"].str.lower().str.contains(search, regex=False)]
+            df = df[df["PLAYER_NAME"].map(normalize_name).str.contains(search, regex=False)]
         if team_code != "all":
             df = df[df["TEAM_ABBREVIATION"] == team_code]
         if position_filter != "all":
@@ -436,6 +439,8 @@ def get_players():
             "AST",
             "STL",
             "BLK",
+            "FGA",
+            "FTA",
             "FG_PCT",
             "FG3_PCT",
             "FT_PCT",
@@ -473,7 +478,7 @@ def get_players():
                 p["REB_PCT"] = round(p["REB_PCT"], 1)
             if "PIE" in p:
                 p["PIE"] = round(p["PIE"], 1)
-            for stat in ["MIN", "PTS", "REB", "AST", "STL", "BLK", "PF"]:
+            for stat in ["MIN", "PTS", "REB", "AST", "STL", "BLK", "PF", "FGA", "FTA"]:
                 if stat in p:
                     p[stat] = round(p[stat], 1)
 
@@ -736,6 +741,19 @@ def export_players():
         print(f"Error in /api/export/players: {e}")
         return jsonify({"error": str(e)}), 500
 
+def normalize_name(text: str) -> str:
+    """Lowercase, strip accents and punctuation: "P.J. Dončić-Smith" -> "pj doncic smith"."""
+    text = unicodedata.normalize("NFKD", text or "")
+    text = "".join(c for c in text if not unicodedata.combining(c)).lower()
+    text = re.sub(r"[.'’]", "", text)          # "P.J." -> "pj", "D'Angelo" -> "dangelo"
+    text = re.sub(r"[^a-z0-9]+", " ", text)     # hyphens and other separators -> space
+    return text.strip()
+
+@lru_cache(maxsize=1)
+def searchable_players():
+    """(player, normalized full name) pairs from nba_api's static player list."""
+    return [(p, normalize_name(p["full_name"])) for p in players.get_players()]
+
 @app.route("/api/search-players")
 def search_players():
     try:
@@ -749,13 +767,23 @@ def search_players():
                     found.append({"id": p["id"], "name": p["full_name"], "is_active": p["is_active"]})
             return jsonify({"success": True, "players": found})
 
-        query = request.args.get("q", "").lower()
-        all_players = players.get_players()
+        query = normalize_name(request.args.get("q", ""))
+        if not query:
+            return jsonify({"success": True, "players": []})
+
+        ranked = []
+        for p, name in searchable_players():
+            if query not in name:
+                continue
+            # Names (or a first/last name) that start with the query rank first, then active players.
+            word_prefix = (" " + name).find(" " + query) != -1
+            ranked.append(((not word_prefix, not p["is_active"], name), p))
+        ranked.sort(key=lambda item: item[0])
+
         matching = [
             {"id": p["id"], "name": p["full_name"], "is_active": p["is_active"]}
-            for p in all_players
-            if query in p["full_name"].lower()
-        ][:10]
+            for _, p in ranked[:10]
+        ]
         return jsonify({"success": True, "players": matching})
     except Exception as e:
         print(f"Error in /api/search-players: {e}")

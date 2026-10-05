@@ -83,10 +83,6 @@ footer a {
 
 /* ---- Standings ---- */
 
-[hidden] {
-  display: none !important;
-}
-
 .page-header {
   text-align: center;
   margin-bottom: 30px;
