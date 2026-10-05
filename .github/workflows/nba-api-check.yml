@@ -1,0 +1,25 @@
+# Can a cloud machine reach stats.nba.com? GitHub's runners are Azure VMs, so this
+# is a cheap stand-in for "will the NBA API work once the site is hosted".
+name: NBA API connectivity
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 14 * * 1"  # Mondays 14:00 UTC
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Call stats.nba.com from this runner
+        env:
+          NBA_TIMEOUT: "20"
+        run: python scripts/check_nba_api.py
