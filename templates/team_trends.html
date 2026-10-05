@@ -9,13 +9,13 @@
 
 {% block content %}
 
-    <section class="trends-header">
+    <section class="page-header">
         <h2>NBA Team Trends & Analytics</h2>
         <p>Analyze team performance, win-loss trends, and efficiency ratings</p>
     </section>
 
-    <section class="team-selector">
-        <div class="selector-controls">
+    <section class="panel">
+        <div class="controls-row">
             <div class="control-group">
                 <label for="team-select">Select Team</label>
                 <select id="team-select">
@@ -35,50 +35,50 @@
                 </select>
             </div>
 
-            <button id="load-data" class="load-btn">Load Team Data</button>
+            <button id="load-data" class="btn">Load Team Data</button>
         </div>
     </section>
 
-    <section id="team-overview" class="team-overview" style="display: none;">
+    <section id="team-overview" class="panel" style="display: none;">
         <div class="overview-header">
             <h3 id="team-name"></h3>
             <div id="team-record" class="team-record"></div>
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card">
-                <h4>Offensive Stats</h4>
+            <div class="card">
+                <h4 class="card-title">Offensive Stats</h4>
                 <div id="offensive-stats" class="stat-list"></div>
             </div>
 
-            <div class="stat-card">
-                <h4>Defensive Stats</h4>
+            <div class="card">
+                <h4 class="card-title">Defensive Stats</h4>
                 <div id="defensive-stats" class="stat-list"></div>
             </div>
 
-            <div class="stat-card">
-                <h4>Efficiency Metrics</h4>
+            <div class="card">
+                <h4 class="card-title">Efficiency Metrics</h4>
                 <div id="efficiency-stats" class="stat-list"></div>
             </div>
 
-            <div class="stat-card">
-                <h4>Team Rankings</h4>
+            <div class="card">
+                <h4 class="card-title">Team Rankings</h4>
                 <div id="team-rankings" class="stat-list"></div>
             </div>
         </div>
     </section>
 
-    <section id="trends-visualization" class="trends-visualization" style="display: none;">
-        <h3>Performance Trends</h3>
-        <div class="trend-tabs">
-            <button class="trend-tab active" data-trend="monthly">Monthly Performance</button>
+    <section id="trends-visualization" class="panel" style="display: none;">
+        <h3 class="panel-title">Performance Trends</h3>
+        <div class="tabs">
+            <button class="tab trend-tab active" data-trend="monthly">Monthly Performance</button>
         </div>
 
         <div id="trend-content" class="trend-content"></div>
     </section>
 
-    <section id="roster-analysis" class="roster-analysis" style="display: none;">
-        <h3>Roster Impact Analysis</h3>
+    <section id="roster-analysis" class="panel" style="display: none;">
+        <h3 class="panel-title">Roster Impact Analysis</h3>
         <div id="roster-content" class="roster-content"></div>
     </section>
 
@@ -257,7 +257,7 @@
     <div class="trend-chart">
       <h4>Win % by Month</h4>
       <div class="bar-chart">
-        <canvas id="monthlyChart" width="600" height="300"></canvas>
+        <canvas id="monthlyChart"></canvas>
       </div>
     </div>
   `;
@@ -280,6 +280,7 @@
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       scales: { y: { beginAtZero: true, max: 100 } }
     }
   });
@@ -300,28 +301,28 @@
 
     content.innerHTML = `
         <div class="roster-grid">
-            <div class="roster-card">
+            <div class="card roster-card">
                 <h4>Top Scorer</h4>
                 <div class="player-highlight">
                     <span class="player-name">${data.top_scorer.name}</span>
                     <span class="player-stat">${data.top_scorer.stat.toFixed(1)} PPG</span>
                 </div>
             </div>
-            <div class="roster-card">
+            <div class="card roster-card">
                 <h4>Top Rebounder</h4>
                 <div class="player-highlight">
                     <span class="player-name">${data.top_rebounder.name}</span>
                     <span class="player-stat">${data.top_rebounder.stat.toFixed(1)} RPG</span>
                 </div>
             </div>
-            <div class="roster-card">
+            <div class="card roster-card">
                 <h4>Top Playmaker</h4>
                 <div class="player-highlight">
                     <span class="player-name">${data.top_playmaker.name}</span>
                     <span class="player-stat">${data.top_playmaker.stat.toFixed(1)} APG</span>
                 </div>
             </div>
-            <div class="roster-card">
+            <div class="card roster-card">
                 <h4>Most Efficient</h4>
                 <div class="player-highlight">
                     <span class="player-name">${data.most_efficient.name}</span>

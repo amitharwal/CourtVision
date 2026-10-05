@@ -8,18 +8,20 @@
 
 {% block content %}
 
-    <section class="filters-section">
-      <div class="section-header">
-        <h2>Player Explorer</h2>
-      </div>
+    <section class="page-header">
+      <h2>Player Explorer</h2>
+      <p>Search every player in NBA history and open their career page</p>
+    </section>
+
+    <section class="panel">
 
       <div class="search-bar">
         <input type="text" id="search-input" placeholder="Search any player in NBA history (e.g., LeBron James, Shai Gilgeous-Alexander)">
-        <button id="search-btn">Search</button>
+        <button id="search-btn" class="btn">Search</button>
       </div>
 
-      <div id="search-results" class="players-table" style="display:none;">
-        <table>
+      <div id="search-results" class="table-wrap results-table" style="display:none;">
+        <table class="data-table">
           <thead>
             <tr>
               <th>Player</th>
@@ -62,7 +64,7 @@
           <tr>
             <td>${p.name}</td>
             <td>${p.is_active ? 'Active' : 'Retired'}</td>
-            <td><a class="small-btn" href="/player/${p.id}">Open</a></td>
+            <td><a class="btn btn-secondary btn-sm" href="/player/${p.id}">Open</a></td>
           </tr>
         `).join('');
         table.style.display = list.length ? 'block' : 'none';

@@ -8,13 +8,13 @@
 
 {% block content %}
 
-        <section class="chart-header">
+        <section class="page-header">
             <h2>Interactive Shot Charts</h2>
             <p>Visualize player shot distribution with dynamic filters</p>
         </section>
 
-        <section class="chart-controls">
-            <div class="control-group">
+        <section class="panel controls-row">
+            <div class="control-group search-field">
                 <label for="player-search">Search Player</label>
                 <input type="text" id="player-search" placeholder="Type player name...">
                 <div id="player-results" class="search-dropdown"></div>
@@ -58,17 +58,17 @@
                 </select>
             </div>
 
-            <button id="load-chart" class="load-btn">Load Shot Chart</button>
+            <button id="load-chart" class="btn">Load Shot Chart</button>
         </section>
 
-        <section id="selected-player" class="selected-player" style="display: none;">
+        <section id="selected-player" class="panel selected-player" style="display: none;">
             <div class="player-info-bar">
                 <h3 id="player-name"></h3>
-                <button id="clear-selection" class="clear-btn">Clear Selection</button>
+                <button id="clear-selection" class="btn btn-secondary btn-sm">Clear Selection</button>
             </div>
         </section>
 
-        <section id="chart-container" class="chart-container" style="display: none;">
+        <section id="chart-container" class="panel chart-container" style="display: none;">
             <div class="shot-summary">
                 <div class="summary-item">
                     <span class="summary-label">Total Shots</span>
@@ -93,7 +93,7 @@
             </div>
 
             <div class="heat-zones">
-                <h4>Shot Distribution by Zone</h4>
+                <h4 class="panel-title">Shot Distribution by Zone</h4>
                 <div id="zone-stats" class="zone-stats-grid"></div>
             </div>
         </section>
@@ -177,7 +177,7 @@
 
             resultsDiv.replaceChildren(...players.map(player => {
                 const div = document.createElement('div');
-                div.className = 'player-result';
+                div.className = 'search-option';
                 div.textContent = `${player.name} ${player.is_active ? '' : '(Retired)'}`;
                 div.addEventListener('click', () => selectPlayer(player.id, player.name));
                 return div;
@@ -332,7 +332,7 @@
                 .map(([zone, stats]) => {
                     const percentage = ((stats.made / stats.total) * 100).toFixed(1);
                     return `
-                        <div class="zone-card">
+                        <div class="card zone-card">
                             <div class="zone-name">${zone}</div>
                             <div class="zone-made">${stats.made}/${stats.total}</div>
                             <div class="zone-percentage">${percentage}%</div>

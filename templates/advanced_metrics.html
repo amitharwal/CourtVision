@@ -8,13 +8,13 @@
 
 {% block content %}
 
-        <section class="metrics-header">
+        <section class="page-header">
             <h2>Advanced NBA Metrics Dashboard</h2>
-            <p>Deep dive into PER, True Shooting %, Usage Rate, and other advanced statistics</p>
+            <p>League leaders in True Shooting %, Usage Rate, Player Impact Estimate and more</p>
         </section>
 
-        <section class="metrics-controls">
-            <div class="control-row">
+        <section class="panel">
+            <div class="controls-row">
                 <div class="control-group">
                     <label for="metric-select">Select Metric</label>
                     <select id="metric-select">
@@ -55,11 +55,11 @@
                            title="True shooting attempts: FGA + 0.44 × FTA">
                 </div>
 
-                <button id="load-metrics" class="load-btn">Load Metrics</button>
+                <button id="load-metrics" class="btn">Load Metrics</button>
             </div>
         </section>
 
-        <section class="metric-explanation">
+        <section class="panel metric-explanation">
             <h3 id="metric-name">True Shooting %</h3>
             <p id="metric-description">True Shooting Percentage (TS%) measures shooting efficiency by accounting for field goals, 3-pointers, and free throws.</p>
             <div id="metric-formula" class="formula">
@@ -67,19 +67,19 @@
             </div>
         </section>
 
-        <section id="metrics-visualization" class="metrics-visualization" style="display: none;">
-            <div class="viz-tabs">
-                <button class="viz-tab active" data-view="leaders">League Leaders</button>
-                <button class="viz-tab" data-view="distribution">Distribution</button>
-                <button class="viz-tab" data-view="comparison">Position Comparison</button>
+        <section id="metrics-visualization" class="panel" style="display: none;">
+            <div class="tabs">
+                <button class="tab viz-tab active" data-view="leaders">League Leaders</button>
+                <button class="tab viz-tab" data-view="distribution">Distribution</button>
+                <button class="tab viz-tab" data-view="comparison">Position Comparison</button>
             </div>
 
             <div id="viz-content" class="viz-content">
             </div>
         </section>
 
-        <section id="metrics-insights" class="metrics-insights" style="display: none;">
-            <h3>Key Insights</h3>
+        <section id="metrics-insights" class="panel" style="display: none;">
+            <h3 class="panel-title">Key Insights</h3>
             <div id="insights-grid" class="insights-grid">
             </div>
         </section>
@@ -273,7 +273,7 @@
             content.innerHTML = `
                 <div class="leaders-grid">
                     ${top20.map((player, index) => `
-                        <div class="leader-card ${player[currentMetric] >= metric.eliteValue ? 'elite' : player[currentMetric] >= metric.goodValue ? 'good' : ''}">
+                        <div class="card leader-card ${player[currentMetric] >= metric.eliteValue ? 'elite' : player[currentMetric] >= metric.goodValue ? 'good' : ''}">
                             <div class="rank">#${index + 1}</div>
                             <div class="leader-info">
                                 <div class="player-name">${player.PLAYER_NAME}</div>
@@ -320,7 +320,7 @@
                             </div>
                         `).join('')}
                     </div>
-                    <div class="distribution-stats">
+                    <div class="card distribution-stats">
                         <div class="dist-stat">
                             <span>Average:</span>
                             <strong>${(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)}</strong>
@@ -358,7 +358,7 @@
                             const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
                             const top = values.length > 0 ? Math.max(...values) : 0;
                             return `
-                                <div class="position-card">
+                                <div class="card position-card">
                                     <h5>${pos === 'G' ? 'Guards' : pos === 'F' ? 'Forwards' : 'Centers'}</h5>
                                     <div class="pos-avg">${avg.toFixed(1)}</div>
                                     <div class="pos-label">Average</div>
@@ -382,20 +382,20 @@
             const elitePlayers = playersData.filter(p => p[currentMetric] >= metric.eliteValue).length;
 
             container.innerHTML = `
-                <div class="insight-card">
+                <div class="card insight-card">
                     <div class="insight-icon">📊</div>
                     <div class="insight-text">
                         <strong>${elitePlayers}</strong> players (${((elitePlayers / playersData.length) * 100).toFixed(1)}%)
                         have elite ${metric.name} values (≥${metric.eliteValue})
                     </div>
                 </div>
-                <div class="insight-card">
+                <div class="card insight-card">
                     <div class="insight-icon">🎯</div>
                     <div class="insight-text">
                         League average ${metric.name} is <strong>${avg.toFixed(1)}</strong>
                     </div>
                 </div>
-                <div class="insight-card">
+                <div class="card insight-card">
                     <div class="insight-icon">🏆</div>
                     <div class="insight-text">
                         ${playersData[0].PLAYER_NAME} leads the league with

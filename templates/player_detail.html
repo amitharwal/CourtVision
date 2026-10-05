@@ -14,17 +14,17 @@
   <div class="player-layout">
     <!-- LEFT -->
     <aside class="player-sidebar" id="sidebar">
-      <div class="player-card" id="player-card">
+      <div class="panel player-card" id="player-card">
         <div class="player-avatar-large">..</div>
         <div class="player-card-body">
           <h1 id="p-name">Loading…</h1>
           <div class="player-meta" id="p-meta"></div>
           <div class="player-physical" id="p-phys"></div>
-          <button class="compare-large-btn" id="compare-btn" disabled>Add to Compare</button>
+          <button class="btn btn-sm compare-btn" id="compare-btn" disabled>Add to Compare</button>
         </div>
       </div>
 
-      <div class="season-list">
+      <div class="panel season-list">
         <h3>Seasons</h3>
         <ul id="season-list">
           <li class="loading">Loading seasons…</li>
@@ -34,16 +34,16 @@
 
     <!-- RIGHT: Overview -->
     <main class="player-main">
-      <div id="season-context" style="margin-bottom:12px; font-weight:600;"></div>
-      <div id="badges" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;"></div>
+      <div id="season-context" class="season-context"></div>
+      <div id="badges" class="badges"></div>
 
-      <section class="stats-content">
-        <div id="overview-tab" class="tab-content active">
+      <section class="panel stats-content">
+        <div id="overview-tab">
           <div class="loading">Loading season stats…</div>
         </div>
       </section>
 
-      <section class="gamelog">
+      <section class="panel gamelog">
         <div class="gamelog-header">
           <h3 id="gamelog-title">Game Log</h3>
           <div class="gamelog-controls">
@@ -69,7 +69,7 @@
         <div id="gamelog-body" hidden>
           <div class="gamelog-chart"><canvas id="gamelog-chart"></canvas></div>
           <p class="gamelog-legend">Bars: each game (green = win, red = loss) • Line: 5-game rolling average</p>
-          <div class="career-stats-table gamelog-table"><table id="gamelog-table"></table></div>
+          <div class="table-wrap gamelog-table"><table id="gamelog-table" class="data-table"></table></div>
         </div>
       </section>
     </main>
@@ -202,7 +202,7 @@
     if ((sel.APG || 0) >= 7) badges.push('Primary Playmaker');
     if ((sel.RPG || 0) >= 10) badges.push('Double-Digit Rebounder');
 
-    wrap.innerHTML = badges.map(b => `<span style="border:1px solid #000; padding:4px 8px; border-radius:6px; background:#fff">${b}</span>`).join(' ');
+    wrap.innerHTML = badges.map(b => `<span class="badge">${b}</span>`).join('');
   }
 
   function fmtPct(v) { return (v == null ? 'N/A' : `${(+v).toFixed(1)}%`); }
@@ -218,8 +218,8 @@
 
     container.innerHTML = `
       <div class="stats-grid">
-        <div class="stat-card">
-          <h3>Per Game</h3>
+        <div class="card">
+          <h3 class="card-title">Per Game</h3>
           <div class="stat-item"><span>GP</span><span>${sel.GP}</span></div>
           <div class="stat-item"><span>GS</span><span>${sel.GS ?? 0}</span></div>
           <div class="stat-item"><span>MPG</span><span>${fmt1(sel.MPG)}</span></div>
@@ -231,8 +231,8 @@
           <div class="stat-item"><span>TOV</span><span>${fmt1(sel.TOV)}</span></div>
         </div>
 
-        <div class="stat-card">
-          <h3>Shooting Quality</h3>
+        <div class="card">
+          <h3 class="card-title">Shooting Quality</h3>
           <div class="stat-item"><span>FG%</span><span>${fmtPct((sel.FG_PCT || 0)*100)}</span></div>
           <div class="stat-item"><span>eFG%</span><span>${fmtPct(sel.EFG_PCT)}</span></div>
           <div class="stat-item"><span>TS%</span><span>${fmtPct(sel.TS_PCT)}</span></div>
@@ -240,8 +240,8 @@
           <div class="stat-item"><span>FT%</span><span>${fmtPct((sel.FT_PCT || 0)*100)}</span></div>
         </div>
 
-        <div class="stat-card">
-          <h3>Volume &amp; Discipline</h3>
+        <div class="card">
+          <h3 class="card-title">Volume &amp; Discipline</h3>
           <div class="stat-item"><span>3PA Rate</span><span>${fmtPct(sel.THREEPAR)}</span></div>
           <div class="stat-item"><span>FT Rate</span><span>${fmtPct(sel.FTR)}</span></div>
           <div class="stat-item"><span>3PM/36</span><span>${fmt1(sel.FG3M_P36)}</span></div>
@@ -249,8 +249,8 @@
           <div class="stat-item"><span>FGA/36</span><span>${fmt1(sel.FGA_P36)}</span></div>
         </div>
 
-        <div class="stat-card">
-          <h3>Per 36 Minutes</h3>
+        <div class="card">
+          <h3 class="card-title">Per 36 Minutes</h3>
           <div class="stat-item"><span>PTS/36</span><span>${fmt1(sel.PTS_P36)}</span></div>
           <div class="stat-item"><span>REB/36</span><span>${fmt1(sel.REB_P36)}</span></div>
           <div class="stat-item"><span>AST/36</span><span>${fmt1(sel.AST_P36)}</span></div>
@@ -259,8 +259,8 @@
           <div class="stat-item"><span>TOV/36</span><span>${fmt1(sel.TOV_P36)}</span></div>
         </div>
 
-        <div class="stat-card">
-          <h3>Totals</h3>
+        <div class="card">
+          <h3 class="card-title">Totals</h3>
           <div class="stat-item"><span>MIN</span><span>${Math.round(safe(sel.MIN_TOTAL))}</span></div>
           <div class="stat-item"><span>PTS</span><span>${Math.round(safe(sel.PTS_TOTAL))}</span></div>
           <div class="stat-item"><span>REB</span><span>${Math.round(safe(sel.REB_TOTAL))}</span></div>
@@ -271,8 +271,8 @@
         </div>
       </div>
 
-      <div class="career-stats-table" style="margin-top:24px;">
-        <table>
+      <div class="table-wrap career-table">
+        <table class="data-table">
           <thead>
             <tr>
               <th>Season</th><th>Team</th><th>GP</th><th>MIN</th><th>PTS</th>
@@ -291,7 +291,7 @@
     return seasons.map(s => {
       const gp = s.GP || 1;
       const pct = v => (v != null ? (v * 100).toFixed(1) + '%' : 'N/A');
-      const active = s.SEASON_ID === activeSeason ? ' style="background:#fffbe6"' : '';
+      const active = s.SEASON_ID === activeSeason ? ' class="active-row"' : '';
       const teamLabel = s.TEAM_NAME || s.TEAM_ABBREVIATION || 'N/A';
       return `
         <tr${active}>

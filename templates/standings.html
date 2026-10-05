@@ -12,7 +12,7 @@
         <p>Regular-season standings by conference</p>
     </section>
 
-    <section class="standings-controls">
+    <section class="panel standings-controls">
         <div class="control-group">
             <label for="season-select">Season</label>
             <select id="season-select">
@@ -30,13 +30,13 @@
     <p id="standings-status" class="status">Loading standings...</p>
 
     <div id="standings" class="standings-grid" hidden>
-        <section class="conference">
-            <h3>Eastern Conference</h3>
-            <div class="table-wrap"><table id="east-table"></table></div>
+        <section class="panel conference">
+            <h3 class="conference-title">Eastern Conference</h3>
+            <div class="table-wrap"><table id="east-table" class="data-table"></table></div>
         </section>
-        <section class="conference">
-            <h3>Western Conference</h3>
-            <div class="table-wrap"><table id="west-table"></table></div>
+        <section class="panel conference">
+            <h3 class="conference-title">Western Conference</h3>
+            <div class="table-wrap"><table id="west-table" class="data-table"></table></div>
         </section>
     </div>
 {% endblock %}

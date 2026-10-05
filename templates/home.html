@@ -8,15 +8,18 @@
 
 {% block content %}
 
-    <section class="hero">
+    <section class="page-header hero">
       <h2>Court Vision 🏀</h2>
       <p>Enjoy the game. Find players, teams, shot charts, and analytical tools—powered by real-time data.</p>
-      <button id="load-data">Today's Games List</button>
     </section>
 
-    <section id="chart-container">
-      <h3>Today's Games</h3>
-      <table class="leaderboard-table">
+    <section class="panel">
+      <div class="panel-heading">
+        <h3 class="panel-title">Today's Games</h3>
+        <button id="load-data" class="btn btn-secondary btn-sm">Refresh</button>
+      </div>
+      <div class="table-wrap">
+      <table class="data-table">
         <thead>
           <tr>
             <th>Matchup</th>
@@ -30,10 +33,11 @@
           </tr>
         </tbody>
       </table>
+      </div>
     </section>
 
-    <section class="quick-stats">
-      <h3>Quick Stats</h3>
+    <section class="home-section">
+      <h3 class="section-title">Quick Stats</h3>
       <div class="stats-grid">
         <div class="stat-card">
           <h4>Total Players</h4>
@@ -54,10 +58,10 @@
       </div>
     </section>
 
-    <section class="features">
-      <h3>Features</h3>
+    <section class="home-section">
+      <h3 class="section-title">Features</h3>
       <div class="feature-grid">
-        <div class="feature-card">
+        <a class="feature-card" href="/players">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -67,8 +71,8 @@
           </div>
           <h4>Player Database</h4>
           <p>Browse and filter all NBA players with detailed statistics</p>
-        </div>
-        <div class="feature-card">
+        </a>
+        <a class="feature-card" href="/shot-charts">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
@@ -85,8 +89,8 @@
           </div>
           <h4>Shot Charts</h4>
           <p>Interactive visualizations of player shooting patterns</p>
-        </div>
-        <div class="feature-card">
+        </a>
+        <a class="feature-card" href="/team-trends">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
@@ -94,8 +98,8 @@
           </div>
           <h4>Team Analytics</h4>
           <p>Deep dive into team performance and efficiency metrics</p>
-        </div>
-        <div class="feature-card">
+        </a>
+        <a class="feature-card" href="/compare">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="18" cy="18" r="3"></circle>
@@ -106,8 +110,8 @@
           </div>
           <h4>Player Comparison</h4>
           <p>Compare up to 4 players side-by-side</p>
-        </div>
-        <div class="feature-card">
+        </a>
+        <a class="feature-card" href="/advanced-metrics">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -119,8 +123,8 @@
           </div>
           <h4>Advanced Metrics</h4>
           <p>True Shooting %, Usage Rate, and more</p>
-        </div>
-        <div class="feature-card">
+        </a>
+        <a class="feature-card" href="/api/export/players">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -129,8 +133,8 @@
             </svg>
           </div>
           <h4>Export Data</h4>
-          <p>Download player and team data in CSV format</p>
-        </div>
+          <p>Download this season's league player stats as CSV</p>
+        </a>
       </div>
     </section>
 {% endblock %}

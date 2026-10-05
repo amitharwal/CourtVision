@@ -8,22 +8,22 @@
 
 {% block content %}
 
-        <section class="compare-header">
+        <section class="page-header">
             <h2>Player Comparison Tool</h2>
             <p>Select up to 4 players to compare their stats side-by-side</p>
         </section>
 
-        <section class="player-selection">
+        <section class="panel player-selection">
             <div class="selected-players" id="selected-players">
             </div>
 
-            <div class="add-player-section">
+            <div class="search-field">
                 <input type="text" id="player-search" placeholder="Search for a player...">
-                <div id="search-results" class="search-results"></div>
+                <div id="search-results" class="search-dropdown"></div>
             </div>
         </section>
 
-        <section id="comparison-section" class="comparison-section" style="display: none;">
+        <section id="comparison-section" class="panel comparison-section" style="display: none;">
             <div class="season-selector">
                 <label for="season-select">Season</label>
                 <select id="season-select">
@@ -35,7 +35,7 @@
                     <option value="regular">Regular Season</option>
                     <option value="playoffs">Playoffs</option>
                 </select>
-                <button id="refresh-comparison" class="refresh-btn">Refresh</button>
+                <button id="refresh-comparison" class="btn btn-secondary btn-sm">Refresh</button>
             </div>
 
             <div id="comparison-content" class="comparison-content">
@@ -103,7 +103,7 @@
     }
     out.replaceChildren(...list.map(p => {
       const div = document.createElement('div');
-      div.className = 'search-result';
+      div.className = 'search-option';
       div.textContent = `${p.name} ${p.is_active ? '✓' : '(Retired)'}`;
       div.addEventListener('click', () => addPlayer(p.id, p.name));
       return div;
@@ -144,7 +144,7 @@
         <button class="remove-btn" onclick="removePlayer(${p.id})">×</button>
       </div>
     `).join('')
-      + (selectedPlayers.length<4 ? '<div class="add-slot">+ Add Player</div>' : '');
+      + (selectedPlayers.length<4 ? '<div class="add-slot" onclick="document.getElementById(\'player-search\').focus()">+ Add Player</div>' : '');
   }
 
   async function loadComparison() {

@@ -1,231 +1,39 @@
-:root {
-  --primary: #000000;
-  --secondary: #FFFFFF;
-  --accent: #FF5E5B;
-  --shadow: 8px 8px 0px var(--primary);
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: 'Courier New', monospace;
-}
-
-body {
-  background-color: var(--light-gray);
-  color: var(--primary);
-  display: flex;
-  justify-content: center;
-  padding: 20px;
-  min-height: 100vh;
-}
-
-.container {
-  width: 100%;
-  max-width: 1200px;
-}
-
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border: 2px solid var(--primary);
-  padding: 20px;
-  box-shadow: var(--shadow);
-  margin-bottom: 30px;
-  background-color: var(--secondary);
-}
-
-.logo {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-nav {
-  display: flex;
-  gap: 10px;
-}
-
-nav a {
-  text-decoration: none;
-  color: var(--primary);
-  font-weight: bold;
-  border: 2px solid var(--primary);
-  padding: 8px 16px;
-  transition: all 0.3s;
-  background-color: var(--secondary);
-}
-
-nav a:hover, nav a.active {
-  box-shadow: 3px 3px 0px var(--primary);
-  transform: translate(-2px, -2px);
-  background-color: var(--accent);
-  color: var(--secondary);
-}
+/* Home page. Shared components live in base.css. */
 
 .hero {
-  border: 2px solid var(--primary);
-  text-align: center;
-  padding: 25px;
+  border: var(--border);
+  padding: var(--space-6) var(--space-5);
   box-shadow: var(--shadow);
-  margin-bottom: 30px;
   background-color: var(--secondary);
-}
-
-.hero::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  right: -6px;
-  bottom: -6px;
-  border: 1px solid var(--primary);
-  z-index: -1;
-  border-radius: 12px;
 }
 
 .hero h2 {
   font-size: 36px;
-  font-weight: 700;
-  margin-bottom: 20px;
 }
 
-.hero p {
-  font-size: 18px;
-  margin-bottom: 30px;
-  color: #666;
-}
-
-.hero button {
-  padding: 12px 30px;
-  background-color: var(--accent);
-  color: var(--secondary);
-  border: 2px solid var(--primary);
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.hero button:hover {
-  box-shadow: 4px 4px 0 var(--primary);
-  transform: translate(-2px, -2px);
-}
-
-.visualization {
-  border: 1px solid var(--primary);
-  padding: 30px;
-  box-shadow: var(--shadow);
-  border-radius: 12px;
-  position: relative;
-  margin-bottom: 40px;
-  background-color: var(--secondary);
-}
-
-.visualization::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  right: -6px;
-  bottom: -6px;
-  border: 1px solid var(--primary);
-  z-index: -1;
-  border-radius: 12px;
-}
-
-.visualization h3 {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 20px;
-}
-
-.stat-selector {
+.panel-heading {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
-.stat-btn {
-  padding: 8px 20px;
-  border: 2px solid var(--primary);
-  background-color: var(--secondary);
+.panel-heading .panel-title {
+  margin-bottom: 0;
+}
+
+.data-table .matchup {
   font-weight: bold;
-  cursor: pointer;
-  transition: all 0.3s;
 }
 
-.stat-btn.active {
-  background-color: var(--primary);
-  color: var(--secondary);
-}
-
-.stat-btn:hover {
-  box-shadow: 4px 4px 0 var(--primary);
-  transform: translate(-2px, -2px);
-}
-
-#chart-container {
-  border: 2px solid var(--primary);
-  box-shadow: 4px 4px 0px var(--shadow);
-  padding: 20px;
-  margin-top: 20px;
-  background-color: var(--secondary);
-  font-family: 'Courier New', monospace;
-  border-radius: 6px;
-  overflow-x: auto;
-}
-
-#chart-container table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-}
-
-#chart-container th,
-#chart-container td {
-  padding: 12px 14px;
-  text-align: center;
-  border-bottom: 1px solid #ddd;
-}
-
-#chart-container th {
-  background-color: var(--primary);
-  color: var(--secondary);
-  font-weight: bold;
-  text-transform: uppercase;
-  font-size: 14px;
-  letter-spacing: 1px;
-}
-
-#chart-container td {
-  font-size: 16px;
-  color: var(--primary);
-}
-
-#chart-container tr:nth-child(even) {
-  background-color: #f8f8f8;
-}
-
-#chart-container tr:hover {
-  background-color: #f1f1f1;
-}
-
-#chart-container .matchup {
-  font-weight: bold;
-  font-size: 16px;
-}
-
-.quick-stats {
-  margin-top: 40px;
+.home-section {
   margin-bottom: 40px;
 }
 
-.quick-stats h3 {
-  font-size: 24px;
-  font-weight: 700;
+.section-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
   margin-bottom: 20px;
 }
 
@@ -235,57 +43,31 @@ nav a:hover, nav a.active {
   gap: 20px;
 }
 
-.stat-card {
-  border: 1px solid var(--primary);
-  padding: 30px 20px;
+.stat-card,
+.feature-card {
+  border: var(--border);
   box-shadow: var(--shadow);
-  border-radius: 12px;
   background-color: var(--secondary);
-  position: relative;
+}
+
+.stat-card {
+  padding: var(--space-5) 20px;
   text-align: center;
-  transition: all 0.3s;
-}
-
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  right: -6px;
-  bottom: -6px;
-  border: 1px solid var(--primary);
-  z-index: -1;
-  border-radius: 12px;
-}
-
-.stat-card:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 10px 10px 0 var(--primary);
 }
 
 .stat-card h4 {
-  font-size: 14px;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #666;
+  color: var(--muted);
   margin-bottom: 10px;
 }
 
 .stat-number {
+  font-family: var(--font-display);
   font-size: 36px;
-  font-weight: 700;
+  font-weight: bold;
   color: var(--accent);
-}
-
-.features {
-  margin-bottom: 40px;
-  margin-top: 40px;
-}
-
-.features h3 {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 20px;
 }
 
 .feature-grid {
@@ -295,95 +77,39 @@ nav a:hover, nav a.active {
 }
 
 .feature-card {
-  border: 1px solid var(--primary);
-  padding: 30px;
-  box-shadow: var(--shadow);
-  border-radius: 12px;
-  background-color: var(--secondary);
-  position: relative;
-  transition: all 0.3s;
-}
-
-.feature-card::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  right: -6px;
-  bottom: -6px;
-  border: 1px solid var(--primary);
-  z-index: -1;
-  border-radius: 12px;
+  display: block;
+  padding: 28px;
+  text-decoration: none;
+  transition: all 0.2s;
 }
 
 .feature-card:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 10px 10px 0 var(--primary);
+  transform: var(--lift);
+  box-shadow: 8px 8px 0 var(--primary);
+}
+
+.feature-card:hover h4 {
+  color: var(--accent);
 }
 
 .feature-icon {
-  font-size: 48px;
   margin-bottom: 20px;
 }
 
 .feature-card h4 {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 12px;
+  font-size: var(--fs-lg);
+  margin-bottom: var(--space-3);
 }
 
 .feature-card p {
-  font-size: 14px;
-  color: #666;
+  font-size: var(--fs-sm);
+  color: var(--muted);
   line-height: 1.6;
 }
 
-footer {
-  text-align: center;
-  padding: 40px 20px;
-  margin-top: 60px;
-  border-top: 2px solid var(--primary);
-}
-
-footer p {
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-
-.footer-links a {
-  color: var(--primary);
-  font-weight: bold;
-  text-decoration: none;
-  margin: 0 10px;
-  transition: color 0.3s;
-}
-
-.footer-links a:hover {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
 @media (max-width: 768px) {
-  header {
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  nav {
-    justify-content: center;
-  }
-
-  nav a {
-    padding: 6px 12px;
-    font-size: 14px;
-  }
-
   .hero h2 {
     font-size: 28px;
-  }
-
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
   .stat-number {
@@ -393,22 +119,4 @@ footer p {
   .feature-grid {
     grid-template-columns: 1fr;
   }
-
-  .stat-selector {
-    justify-content: center;
-  }
-
-  #chart-container {
-    font-size: 14px;
-  }
-
-  #chart-container th,
-  #chart-container td {
-    padding: 8px;
-  }
-}
-
-.hero::before,
-.visualization::before {
-  display: none !important;
 }
