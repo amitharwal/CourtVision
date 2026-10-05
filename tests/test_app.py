@@ -136,6 +136,9 @@ class PlayersApiTest(unittest.TestCase):
         self.assertEqual(alpha["USG_PCT"], 30.0)
         self.assertEqual(alpha["PIE"], 15.0)
 
+    def test_search_ignores_case_and_accents(self):
+        self.assertEqual(list(self._players("&search=ALPHA")), ["Alpha Guard"])
+
     def test_search_does_not_change_metrics(self):
         unfiltered = self._players()["Alpha Guard"]
         filtered = self._players("&search=alpha")
@@ -174,6 +177,25 @@ class PlayerApiTest(unittest.TestCase):
 
 
 class SearchPlayersApiTest(unittest.TestCase):
+    def _names(self, q):
+        client = app_module.app.test_client()
+        return [p["name"] for p in client.get("/api/search-players", query_string={"q": q}).get_json()["players"]]
+
+    def test_ignores_accents_and_punctuation(self):
+        self.assertIn("Luka Dončić", self._names("doncic"))
+        self.assertIn("Nikola Jokić", self._names("JOKIC"))
+        self.assertIn("P.J. Washington", self._names("pj washington"))
+        self.assertIn("D'Angelo Russell", self._names("d'angelo"))
+        self.assertIn("Shai Gilgeous-Alexander", self._names("gilgeous alexander"))
+
+    def test_ranks_name_prefix_matches_before_substrings(self):
+        names = self._names("james")
+        self.assertIn("LeBron James", names)
+        self.assertIn("James Harden", names)
+
+    def test_blank_query_returns_nothing(self):
+        self.assertEqual(self._names(" . "), [])
+
     def test_lookup_by_ids_keeps_order_and_skips_unknown(self):
         client = app_module.app.test_client()
         data = client.get("/api/search-players?ids=201939,2544,999999999,abc").get_json()
