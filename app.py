@@ -3,13 +3,14 @@ import io
 import re
 import unicodedata
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from functools import lru_cache
 
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file
 from nba_api.stats.endpoints import (
     LeagueGameLog,
-    ScoreboardV2,
+    ScoreboardV3,
     TeamPlayerDashboard,
     commonplayerinfo,
     playerprofilev2,
@@ -63,13 +64,9 @@ def inject_layout():
 
 @app.route("/")
 def home():
-    # Today's games load client-side from /api/games-today so the page never
-    # blocks on the NBA API.
-    return render_template(
-        "home.html",
-        seasons=get_seasons(),
-        total_players=len(players.get_players()),
-    )
+    # Games, leaders and standings load client-side so the page renders without
+    # waiting on the NBA API.
+    return render_template("home.html", season=get_seasons()[0])
 
 @app.route("/privacy_policy")
 def privacy_policy():
@@ -77,28 +74,87 @@ def privacy_policy():
 
 @app.route("/api/games-today")
 def api_games_today():
-    today = datetime.now().strftime("%m/%d/%Y")
+    # NBA schedules run on Eastern time, so "today" is the current date in New York.
+    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
 
     def load():
-        raw = nbacall_retry(ScoreboardV2, game_date=today).get_normalized_dict()
-        # ScoreboardV2 lists only the home team's id; resolve abbreviations locally.
-        abbr = {int(t["id"]): t["abbreviation"] for t in teams.get_teams()}
-        return [
-            {
-                "game_id": g.get("GAME_ID"),
-                "matchup": f"{abbr.get(g.get('VISITOR_TEAM_ID'), '?')} @ {abbr.get(g.get('HOME_TEAM_ID'), '?')}",
-                "game_time": (g.get("GAME_STATUS_TEXT") or "").strip(),
-                "arena": g.get("ARENA_NAME"),
-            }
-            for g in (raw.get("GameHeader") or [])
-        ]
+        frames = nbacall_retry(ScoreboardV3, game_date=today, league_id="00").get_data_frames()
+        games_df, teams_df = frames[1], frames[2]
+        return [_scoreboard_game(g, teams_df[teams_df["gameId"] == g["gameId"]]) for _, g in games_df.iterrows()]
 
     try:
         games = cached(("games_today", today), TTL_SHORT, load)
-        return jsonify({"success": True, "games": games, "count": len(games)})
+        return jsonify({"success": True, "date": today, "games": games, "count": len(games)})
     except Exception as e:
         print(f"[ERROR] /api/games-today: {e}")
         return jsonify({"success": False, "error": "Unable to fetch today's games."}), 503
+
+def _scoreboard_game(game, team_rows):
+    """One ScoreboardV3 game with its two team rows -> card data for the home page."""
+    # gameCode is "YYYYMMDD/AWYHOM": away tricode first, then home.
+    code = str(game["gameCode"]).split("/")[-1]
+    away_code, home_code = code[:3], code[3:6]
+    by_code = {r["teamTricode"]: r for _, r in team_rows.iterrows()}
+
+    def team(tricode):
+        r = by_code.get(tricode)
+        if r is None:
+            return {"id": None, "tricode": tricode, "name": tricode, "wins": 0, "losses": 0, "score": None}
+        return {
+            "id": int(r["teamId"]),
+            "tricode": tricode,
+            "name": f"{r['teamCity']} {r['teamName']}",
+            "wins": int(r["wins"] or 0),
+            "losses": int(r["losses"] or 0),
+            "score": int(r["score"]) if pd.notna(r["score"]) else None,
+        }
+
+    return {
+        "game_id": game["gameId"],
+        "status": int(game["gameStatus"]),  # 1 scheduled, 2 live, 3 final
+        "status_text": str(game["gameStatusText"] or "").strip(),
+        "label": str(game.get("gameLabel") or "").strip(),
+        "series": str(game.get("seriesText") or "").strip(),
+        "away": team(away_code),
+        "home": team(home_code),
+    }
+
+@app.route("/api/league-leaders")
+def api_league_leaders():
+    """Top players per game in PTS/REB/AST for the home page."""
+    season = request.args.get("season") or get_seasons()[0]
+    limit = min(request.args.get("limit", default=5, type=int), 10)
+
+    try:
+        df = get_league_player_stats(season)
+    except Exception as e:
+        print(f"[ERROR] /api/league-leaders: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch league leaders."}), 503
+
+    if df is None or df.empty:
+        return jsonify({"success": True, "season": season, "leaders": {}})
+
+    # Qualify players who appeared in at least half of the most games anyone has played,
+    # so a 3-game hot streak doesn't top a per-game leaderboard.
+    min_gp = max(1, int(df["GP"].max() * 0.5))
+    qualified = df[df["GP"] >= min_gp]
+
+    leaders = {}
+    for stat in ("PTS", "REB", "AST"):
+        per_game = qualified[stat] / qualified["GP"]
+        top = qualified.assign(VALUE=per_game).nlargest(limit, "VALUE")
+        leaders[stat] = [
+            {
+                "player_id": int(r["PLAYER_ID"]),
+                "name": r["PLAYER_NAME"],
+                "team_id": int(r["TEAM_ID"]) if pd.notna(r["TEAM_ID"]) else None,
+                "team": r["TEAM_ABBREVIATION"],
+                "value": round(float(r["VALUE"]), 1),
+            }
+            for _, r in top.iterrows()
+        ]
+
+    return jsonify({"success": True, "season": season, "min_games": min_gp, "leaders": leaders})
 
 @app.route("/players")
 def players_page():
@@ -177,23 +233,28 @@ def api_team_monthly_series():
 
     df = get_team_gamelog_cached(team_id, season, timeout_sec=30)  # longer timeout
     if df is None or df.empty:
-        return jsonify({"success": True, "months": ["Oct","Nov","Dec","Jan","Feb","Mar","Apr"], "win_pct": [0]*7})
+        return jsonify({"success": True, "months": [], "win_pct": [], "wins": [], "losses": []})
 
     df = df.copy()
-    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
+    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], format="%b %d, %Y", errors="coerce")
     df["M"] = df["GAME_DATE"].dt.month
 
-    order = [(10,"Oct"),(11,"Nov"),(12,"Dec"),(1,"Jan"),(2,"Feb"),(3,"Mar"),(4,"Apr")]
-    labels, values = [], []
+    # Regular-season months in order; months without games are left out rather than
+    # reported as 0% (e.g. early in a season).
+    order = [(10, "Oct"), (11, "Nov"), (12, "Dec"), (1, "Jan"), (2, "Feb"), (3, "Mar"), (4, "Apr")]
+    labels, values, wins, losses = [], [], [], []
     for mnum, mlabel in order:
         sub = df[df["M"] == mnum]
-        w = int((sub["WL"] == "W").sum()) if not sub.empty else 0
-        l = int((sub["WL"] == "L").sum()) if not sub.empty else 0
-        total = w + l
+        w = int((sub["WL"] == "W").sum())
+        l = int((sub["WL"] == "L").sum())
+        if w + l == 0:
+            continue
         labels.append(mlabel)
-        values.append(round((w/total)*100, 1) if total else 0.0)
+        values.append(round(w / (w + l) * 100, 1))
+        wins.append(w)
+        losses.append(l)
 
-    return jsonify({"success": True, "months": labels, "win_pct": values})
+    return jsonify({"success": True, "months": labels, "win_pct": values, "wins": wins, "losses": losses})
 
 @app.route("/api/team-stats/<team_id>")
 def api_team_stats(team_id):
@@ -368,7 +429,11 @@ def api_roster_analysis(team_id):
             gp = row.get("GP") or 1
             total = row.get(stat_col, 0)
             per_game = total / gp
-            return {"name": row.get("PLAYER_NAME", "N/A"), "stat": round(per_game, 1)}
+            return {
+                "name": row.get("PLAYER_NAME", "N/A"),
+                "player_id": int(row["PLAYER_ID"]) if row.get("PLAYER_ID") is not None else None,
+                "stat": round(per_game, 1),
+            }
 
         top_scorer = stats.sort_values("PTS", ascending=False).iloc[0] if not stats.empty else None
         top_rebounder = stats.sort_values("REB", ascending=False).iloc[0] if not stats.empty else None
@@ -381,7 +446,8 @@ def api_roster_analysis(team_id):
                 "top_scorer": build_player_dict(top_scorer, "PTS"),
                 "top_rebounder": build_player_dict(top_rebounder, "REB"),
                 "top_playmaker": build_player_dict(top_playmaker, "AST"),
-                "most_efficient": build_player_dict(most_efficient, "EFF"),
+                # build_player_dict divides by GP, so pass the season total (EFF is already per game)
+                "most_efficient": build_player_dict(most_efficient, "EFF_RAW"),
             }
         )
 
@@ -429,6 +495,7 @@ def get_players():
         display_columns = [
             "PLAYER_ID",
             "PLAYER_NAME",
+            "TEAM_ID",
             "TEAM_ABBREVIATION",
             "POSITION",
             "AGE",

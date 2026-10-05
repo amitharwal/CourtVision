@@ -4,18 +4,18 @@
 
 {% block head %}
     <link rel="stylesheet" href="/static/css/team_trends.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {% endblock %}
 
 {% block content %}
 
-    <section class="trends-header">
+    <section class="page-header">
         <h2>NBA Team Trends & Analytics</h2>
         <p>Analyze team performance, win-loss trends, and efficiency ratings</p>
     </section>
 
-    <section class="team-selector">
-        <div class="selector-controls">
+    <section class="panel">
+        <div class="controls-row">
             <div class="control-group">
                 <label for="team-select">Select Team</label>
                 <select id="team-select">
@@ -35,50 +35,53 @@
                 </select>
             </div>
 
-            <button id="load-data" class="load-btn">Load Team Data</button>
+            <button id="load-data" class="btn">Load Team Data</button>
         </div>
     </section>
 
-    <section id="team-overview" class="team-overview" style="display: none;">
+    <section id="team-overview" class="panel" style="display: none;">
         <div class="overview-header">
-            <h3 id="team-name"></h3>
+            <div class="team-title">
+                <img id="team-logo" class="team-logo" alt="" width="56" height="56" hidden>
+                <h3 id="team-name"></h3>
+            </div>
             <div id="team-record" class="team-record"></div>
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card">
-                <h4>Offensive Stats</h4>
+            <div class="card">
+                <h4 class="card-title">Offensive Stats</h4>
                 <div id="offensive-stats" class="stat-list"></div>
             </div>
 
-            <div class="stat-card">
-                <h4>Defensive Stats</h4>
+            <div class="card">
+                <h4 class="card-title">Defensive Stats</h4>
                 <div id="defensive-stats" class="stat-list"></div>
             </div>
 
-            <div class="stat-card">
-                <h4>Efficiency Metrics</h4>
+            <div class="card">
+                <h4 class="card-title">Efficiency Metrics</h4>
                 <div id="efficiency-stats" class="stat-list"></div>
             </div>
 
-            <div class="stat-card">
-                <h4>Team Rankings</h4>
+            <div class="card">
+                <h4 class="card-title">Team Rankings</h4>
                 <div id="team-rankings" class="stat-list"></div>
             </div>
         </div>
     </section>
 
-    <section id="trends-visualization" class="trends-visualization" style="display: none;">
-        <h3>Performance Trends</h3>
-        <div class="trend-tabs">
-            <button class="trend-tab active" data-trend="monthly">Monthly Performance</button>
+    <section id="trends-visualization" class="panel" style="display: none;">
+        <h3 class="panel-title">Performance Trends</h3>
+        <div class="tabs">
+            <button class="tab trend-tab active" data-trend="monthly">Monthly Performance</button>
         </div>
 
         <div id="trend-content" class="trend-content"></div>
     </section>
 
-    <section id="roster-analysis" class="roster-analysis" style="display: none;">
-        <h3>Roster Impact Analysis</h3>
+    <section id="roster-analysis" class="panel" style="display: none;">
+        <h3 class="panel-title">Roster Impact Analysis</h3>
         <div id="roster-content" class="roster-content"></div>
     </section>
 
@@ -125,59 +128,53 @@
         });
     }
 
+    const TEAM_SECTIONS = ['team-overview', 'trends-visualization', 'roster-analysis'];
+
     async function loadTeamData() {
         if (!currentTeamId) {
-            alert('Please select a team');
+            UI.toast('Choose a team first.', { kind: 'error' });
+            document.getElementById('team-select').focus();
             return;
         }
 
-        // Show spinner + hide everything before fetch
-    showLoading(true);
-    hideAllSections();
-    const season = document.getElementById('season-select').value;
-    UrlState.set({ team_id: currentTeamId, season });
+        // A first load shows the spinner; switching team or season keeps the
+        // current sections on screen, dimmed, until the new data arrives.
+        const sections = TEAM_SECTIONS.map(id => document.getElementById(id));
+        const refreshing = sections[0].style.display === 'block';
+        if (refreshing) sections.forEach(el => UI.refreshing(el, true));
+        else { showLoading(true); hideAllSections(); }
 
-    // Fetch & parse JSON
-    let data;
-    try {
-        console.log('Requesting /api/team-stats/', currentTeamId, season);
-        const resp = await fetch(`/api/team-stats/${currentTeamId}?season=${season}`);
-        data = await resp.json();
-        console.log('team‑stats payload:', data);
-    } catch (fetchErr) {
-        console.error('Network error in loadTeamData:', fetchErr);
-        alert('Network error loading team data');
-        showLoading(false);
-        return;
-    }
+        const season = document.getElementById('season-select').value;
+        UrlState.set({ team_id: currentTeamId, season });
 
-    // If the API says “success: false”…
-    if (!data.success) {
-        console.error('API failure payload:', data);
-        alert('API error: ' + (data.error||'unknown'));
-        showLoading(false);
-        return;
-    }
+        let data;
+        try {
+            const resp = await fetch(`/api/team-stats/${currentTeamId}?season=${season}`);
+            data = await resp.json();
+            if (!data.success) throw new Error(data.error || 'Unable to load team data.');
+        } catch (err) {
+            console.error('loadTeamData:', err);
+            UI.toast(err.message || 'Unable to load team data.', { kind: 'error' });
+            return;
+        } finally {
+            showLoading(false);
+            sections.forEach(el => UI.refreshing(el, false));
+        }
 
-    teamData = data.stats;
-    console.log('About to render with teamData:', teamData);
-
-    // Reveal the sections
-    document.getElementById('team-overview').style.display = 'block';
-    document.getElementById('trends-visualization').style.display = 'block';
-    document.getElementById('roster-analysis').style.display = 'block';
-
-    displayTeamOverview();
-    displayTrends();
-    loadRosterAnalysis();
-
-    // Hide spinner
-    showLoading(false);
+        teamData = data.stats;
+        sections.forEach(el => { el.style.display = 'block'; });
+        displayTeamOverview();
+        displayTrends();
+        loadRosterAnalysis();
     }
 
     function displayTeamOverview() {
         const teamName = document.querySelector('#team-select option:checked').textContent;
         document.getElementById('team-name').textContent = teamName;
+        const logo = document.getElementById('team-logo');
+        logo.onerror = () => { logo.hidden = true; };
+        logo.src = NbaMedia.teamLogoUrl(currentTeamId);
+        logo.hidden = false;
         document.getElementById('team-record').innerHTML = `
     <span class="wins">${teamData.W} W</span> -
     <span class="losses">${teamData.L} L</span>
@@ -255,34 +252,67 @@
   const content = document.getElementById('trend-content');
   content.innerHTML = `
     <div class="trend-chart">
-      <h4>Win % by Month</h4>
-      <div class="bar-chart">
-        <canvas id="monthlyChart" width="600" height="300"></canvas>
-      </div>
+      <h4>Win % by month</h4>
+      <div class="chart-box"><canvas id="monthlyChart" role="img" aria-label="Win percentage by month; values are listed in the table below"></canvas></div>
+      <div class="table-wrap monthly-table"><table class="data-table" id="monthly-table"></table></div>
     </div>
   `;
   generateMonthlyChart(currentTeamId, document.getElementById('season-select').value);
 }
 
-    async function generateMonthlyChart(teamId, season) {
+let monthlyChart = null;
+
+async function generateMonthlyChart(teamId, season) {
   const resp = await fetch(`/api/team-monthly-series?team_id=${teamId}&season=${encodeURIComponent(season)}`);
   const data = await resp.json();
-  if (!data.success) {
-    console.error('monthly-series error', data.error);
+  if (!data.success || !data.months.length) {
+    document.getElementById('trend-content').innerHTML =
+      `<p class="no-data">${data.success ? 'No games played yet this season.' : 'Could not load monthly results.'}</p>`;
     return;
   }
-  const ctx = document.getElementById('monthlyChart').getContext('2d');
-  new Chart(ctx, {
+
+  CourtCharts.applyDefaults();
+  const colors = CourtCharts.colors();
+  if (monthlyChart) monthlyChart.destroy();
+  monthlyChart = new Chart(document.getElementById('monthlyChart'), {
     type: 'bar',
     data: {
       labels: data.months,
-      datasets: [{ label: 'Win %', data: data.win_pct, backgroundColor: '#3e95cd' }]
+      datasets: [{ label: 'Win %', data: data.win_pct, backgroundColor: colors.accent }],
     },
     options: {
-      responsive: true,
-      scales: { y: { beginAtZero: true, max: 100 } }
-    }
+      plugins: {
+        tooltip: {
+          displayColors: false,
+          callbacks: {
+            label: item => `${item.parsed.y.toFixed(1)}% (${data.wins[item.dataIndex]}-${data.losses[item.dataIndex]})`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, max: 100, ticks: { stepSize: 25, callback: v => `${v}%` } },
+      },
+    },
   });
+
+  // Table view: the same numbers, readable without hovering
+  const table = document.getElementById('monthly-table');
+  const head = document.createElement('tr');
+  const rows = [['Record', i => `${data.wins[i]}-${data.losses[i]}`], ['Win %', i => `${data.win_pct[i].toFixed(1)}%`]];
+  ['', ...data.months].forEach(m => { const th = document.createElement('th'); th.textContent = m; head.append(th); });
+  const body = document.createElement('tbody');
+  rows.forEach(([name, value]) => {
+    const tr = document.createElement('tr');
+    const label = document.createElement('td');
+    label.textContent = name;
+    label.className = 'row-label';
+    tr.append(label, ...data.months.map((_, i) => { const td = document.createElement('td'); td.textContent = value(i); return td; }));
+    body.append(tr);
+  });
+  const thead = document.createElement('thead');
+  thead.append(head);
+  table.replaceChildren(thead, body);
 }
 
     async function loadRosterAnalysis() {
@@ -300,34 +330,22 @@
 
     content.innerHTML = `
         <div class="roster-grid">
-            <div class="roster-card">
-                <h4>Top Scorer</h4>
+            ${[
+                ['Top Scorer', data.top_scorer, 'PPG'],
+                ['Top Rebounder', data.top_rebounder, 'RPG'],
+                ['Top Playmaker', data.top_playmaker, 'APG'],
+                ['Most Efficient', data.most_efficient, 'EFF'],
+            ].map(([title, p, unit]) => `
+            <div class="card roster-card">
+                <h4>${title}</h4>
                 <div class="player-highlight">
-                    <span class="player-name">${data.top_scorer.name}</span>
-                    <span class="player-stat">${data.top_scorer.stat.toFixed(1)} PPG</span>
+                    ${NbaMedia.avatarHtml(p.player_id, p.name, 72)}
+                    ${p.player_id
+                        ? `<a class="player-name" href="/player/${p.player_id}">${p.name}</a>`
+                        : `<span class="player-name">${p.name}</span>`}
+                    <span class="player-stat">${p.stat.toFixed(1)} ${unit}</span>
                 </div>
-            </div>
-            <div class="roster-card">
-                <h4>Top Rebounder</h4>
-                <div class="player-highlight">
-                    <span class="player-name">${data.top_rebounder.name}</span>
-                    <span class="player-stat">${data.top_rebounder.stat.toFixed(1)} RPG</span>
-                </div>
-            </div>
-            <div class="roster-card">
-                <h4>Top Playmaker</h4>
-                <div class="player-highlight">
-                    <span class="player-name">${data.top_playmaker.name}</span>
-                    <span class="player-stat">${data.top_playmaker.stat.toFixed(1)} APG</span>
-                </div>
-            </div>
-            <div class="roster-card">
-                <h4>Most Efficient</h4>
-                <div class="player-highlight">
-                    <span class="player-name">${data.most_efficient.name}</span>
-                    <span class="player-stat">${data.most_efficient.stat.toFixed(1)} EFF</span>
-                </div>
-            </div>
+            </div>`).join('')}
         </div>
     `;
 }

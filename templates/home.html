@@ -1,76 +1,94 @@
 {% extends "base.html" %}
 
-{% block title %}Court Vision 🏀{% endblock %}
+{% block title %}{% endblock %}
 
 {% block head %}
     <link rel="stylesheet" href="/static/css/home.css">
 {% endblock %}
 
 {% block content %}
-
-    <section class="hero">
-      <h2>Court Vision 🏀</h2>
-      <p>Enjoy the game. Find players, teams, shot charts, and analytical tools—powered by real-time data.</p>
-      <button id="load-data">Today's Games List</button>
-    </section>
-
-    <section id="chart-container">
-      <h3>Today's Games</h3>
-      <table class="leaderboard-table">
-        <thead>
-          <tr>
-            <th>Matchup</th>
-            <th>Time / Status</th>
-            <th>Arena</th>
-          </tr>
-        </thead>
-        <tbody id="games-body">
-          <tr>
-            <td colspan="3">Loading today's games...</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="quick-stats">
-      <h3>Quick Stats</h3>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <h4>Total Players</h4>
-          <p class="stat-number">{{ total_players }}</p>
-        </div>
-        <div class="stat-card">
-          <h4>Active Teams</h4>
-          <p class="stat-number">30</p>
-        </div>
-        <div class="stat-card">
-          <h4>Current Season</h4>
-          <p class="stat-number">{{ seasons[0] }}</p>
-        </div>
-        <div class="stat-card">
-          <h4>Games Today</h4>
-          <div class="stat-number" id="games-count">…</div>
-        </div>
+    <section class="panel hero">
+      <div class="hero-text">
+        <h2>Court Vision</h2>
+        <p>NBA stats, shot charts and team trends, straight from the league's data.</p>
+      </div>
+      <div class="search-field hero-search">
+        <label for="home-search" class="sr-only">Find a player</label>
+        <input type="search" id="home-search" placeholder="Find a player…" autocomplete="off">
+        <div id="home-search-results" class="search-dropdown"></div>
       </div>
     </section>
 
-    <section class="features">
-      <h3>Features</h3>
-      <div class="feature-grid">
-        <div class="feature-card">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+    <section class="home-section">
+      <div class="section-heading">
+        <h3 class="section-title">Today's Games</h3>
+        <span id="games-date" class="section-meta"></span>
+        <button id="load-data" class="btn btn-secondary btn-sm">Refresh</button>
+      </div>
+      <div id="games-grid" class="games-grid">
+        <p class="loading">Loading today's games…</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <h3 class="panel-title">League Leaders <span class="panel-meta">{{ season }} · per game</span></h3>
+        <a class="panel-link" href="/advanced-metrics">Advanced metrics →</a>
+      </div>
+      <div id="leaders" class="leaders-grid">
+        <p class="loading">Loading leaders…</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <h3 class="panel-title">Standings <span class="panel-meta">{{ season }}</span></h3>
+        <a class="panel-link" href="/standings?season={{ season }}">Full standings →</a>
+      </div>
+      <div id="standings-snapshot" class="snapshot-grid">
+        <p class="loading">Loading standings…</p>
+      </div>
+    </section>
+
+    <section class="home-section">
+      <h3 class="section-title">Explore</h3>
+      <div class="explore-grid">
+        <a class="explore-card" href="/players">
+          <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="3" y1="9" x2="21" y2="9"></line>
               <line x1="9" y1="21" x2="9" y2="9"></line>
-            </svg>
-          </div>
-          <h4>Player Database</h4>
-          <p>Browse and filter all NBA players with detailed statistics</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+            </svg></span>
+          <span>
+            <strong>Players</strong>
+            <span class="explore-desc">Search every player in NBA history</span>
+          </span>
+        </a>
+        <a class="explore-card" href="/team-trends">
+          <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg></span>
+          <span>
+            <strong>Teams</strong>
+            <span class="explore-desc">Team records, ratings and monthly trends</span>
+          </span>
+        </a>
+        <a class="explore-card" href="/standings">
+          <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg></span>
+          <span>
+            <strong>Standings</strong>
+            <span class="explore-desc">Conference standings and playoff seeds</span>
+          </span>
+        </a>
+        <a class="explore-card" href="/shot-charts">
+          <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
               <circle cx="12" cy="12" r="3"></circle>
               <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -81,107 +99,259 @@
               <line x1="21" y1="12" x2="23" y2="12"></line>
               <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
               <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-            </svg>
-          </div>
-          <h4>Shot Charts</h4>
-          <p>Interactive visualizations of player shooting patterns</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-            </svg>
-          </div>
-          <h4>Team Analytics</h4>
-          <p>Deep dive into team performance and efficiency metrics</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+            </svg></span>
+          <span>
+            <strong>Shot Charts</strong>
+            <span class="explore-desc">Every shot a player took, on the court</span>
+          </span>
+        </a>
+        <a class="explore-card" href="/compare">
+          <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="18" cy="18" r="3"></circle>
               <circle cx="6" cy="6" r="3"></circle>
               <path d="M13 6h3a2 2 0 0 1 2 2v7"></path>
               <line x1="6" y1="9" x2="6" y2="21"></line>
-            </svg>
-          </div>
-          <h4>Player Comparison</h4>
-          <p>Compare up to 4 players side-by-side</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+            </svg></span>
+          <span>
+            <strong>Compare</strong>
+            <span class="explore-desc">Up to four players side by side</span>
+          </span>
+        </a>
+        <a class="explore-card" href="/advanced-metrics">
+          <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
               <line x1="16" y1="13" x2="8" y2="13"></line>
               <line x1="16" y1="17" x2="8" y2="17"></line>
               <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-          </div>
-          <h4>Advanced Metrics</h4>
-          <p>True Shooting %, Usage Rate, and more</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+            </svg></span>
+          <span>
+            <strong>Advanced Metrics</strong>
+            <span class="explore-desc">TS%, usage, PIE and league leaders</span>
+          </span>
+        </a>
+        <a class="explore-card" href="/api/export/players">
+          <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </div>
-          <h4>Export Data</h4>
-          <p>Download player and team data in CSV format</p>
-        </div>
+            </svg></span>
+          <span>
+            <strong>Export CSV</strong>
+            <span class="explore-desc">This season's league player stats</span>
+          </span>
+        </a>
       </div>
     </section>
 {% endblock %}
 
 {% block scripts %}
-  <script>
-    const currentSeason = "{{ seasons[0] }}";
+<script>
+  const SEASON = {{ season|tojson }};
+  const STAT_LABELS = { PTS: 'Points', REB: 'Rebounds', AST: 'Assists' };
+  const SNAPSHOT_ROWS = 8;
+  const LIVE_REFRESH_MS = 60000;
+  let liveTimer = null;
 
-  document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', () => {
     loadGamesToday();
+    loadLeaders();
+    loadStandingsSnapshot();
+    setupSearch();
     document.getElementById('load-data').addEventListener('click', loadGamesToday);
   });
 
-  async function loadGamesToday() {
-    const body = document.getElementById('games-body');
-    const count = document.getElementById('games-count');
-    const cell = text => {
-      const td = document.createElement('td');
-      td.textContent = text ?? '';
-      return td;
-    };
-    const message = text => {
-      const tr = document.createElement('tr');
-      const td = cell(text);
-      td.colSpan = 3;
-      tr.appendChild(td);
-      body.replaceChildren(tr);
-    };
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
 
-    message("Loading today's games...");
+  function message(container, text, className = 'no-data') {
+    container.replaceChildren(el('p', className, text));
+  }
+
+  // ---- Today's games ----
+  async function loadGamesToday() {
+    const grid = document.getElementById('games-grid');
+    clearTimeout(liveTimer);
+    const refreshing = !!grid.querySelector('.game-card');
+    if (refreshing) UI.refreshing(grid, true);
+    else UI.skeleton(grid, 'cards', 4);
     try {
-      const r = await fetch('/api/games-today');
-      const j = await r.json();
-      if (!j.success) throw new Error(j.error);
-      count.textContent = j.count;
-      if (!j.games.length) {
-        message('No games scheduled today.');
+      const res = await fetch('/api/games-today');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      document.getElementById('games-date').textContent =
+        new Date(`${data.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      if (!data.games.length) {
+        message(grid, 'No games scheduled today.');
         return;
       }
-      body.replaceChildren(...j.games.map(g => {
-        const tr = document.createElement('tr');
-        const matchup = cell(g.matchup);
-        matchup.className = 'matchup';
-        tr.append(matchup, cell(g.game_time), cell(g.arena));
-        return tr;
-      }));
-    } catch {
-      count.textContent = '—';
-      message("Couldn't load today's games. Try again shortly.");
+      grid.replaceChildren(...data.games.map(gameCard));
+      if (data.games.some(g => g.status === 2)) liveTimer = setTimeout(loadGamesToday, LIVE_REFRESH_MS);
+    } catch (e) {
+      console.error(e);
+      if (refreshing) UI.toast("Couldn't refresh today's games.", { kind: 'error' });
+      else message(grid, "Couldn't load today's games. Try again shortly.", 'error');
+    } finally {
+      UI.refreshing(grid, false);
     }
   }
 
-  </script>
+  function gameCard(game) {
+    const card = el('article', `game-card status-${game.status}`);
+    const head = el('div', 'game-head');
+    if (game.status === 2) head.append(el('span', 'live-pill', 'Live'));
+    head.append(el('span', 'game-status', game.status_text));
+    const tag = game.series || game.label;
+    if (tag) head.append(el('span', 'game-tag', tag));
+    card.append(head);
+
+    const decided = game.status === 3 && game.away.score !== game.home.score;
+    for (const side of ['away', 'home']) {
+      const t = game[side];
+      const other = game[side === 'away' ? 'home' : 'away'];
+      const row = el('div', 'game-team');
+      if (decided && t.score < other.score) row.classList.add('loser');
+      if (t.id) row.append(NbaMedia.teamLogo(t.id, 32));
+      const name = el('span', 'team-name');
+      name.append(el('strong', null, t.tricode));
+      if (t.wins + t.losses > 0) name.append(el('span', 'team-record', `${t.wins}-${t.losses}`));
+      row.append(name);
+      if (game.status !== 1 && t.score !== null) row.append(el('span', 'team-score', t.score));
+      card.append(row);
+    }
+    return card;
+  }
+
+  // ---- League leaders ----
+  async function loadLeaders() {
+    const container = document.getElementById('leaders');
+    UI.skeleton(container, 'rows', 6);
+    try {
+      const res = await fetch(`/api/league-leaders?season=${encodeURIComponent(SEASON)}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      const columns = Object.entries(STAT_LABELS)
+        .filter(([stat]) => (data.leaders[stat] || []).length)
+        .map(([stat, label]) => leaderColumn(label, data.leaders[stat]));
+      if (!columns.length) {
+        message(container, `No ${SEASON} stats yet.`);
+        return;
+      }
+      container.replaceChildren(...columns);
+    } catch (e) {
+      console.error(e);
+      message(container, "Couldn't load league leaders.", 'error');
+    }
+  }
+
+  function leaderColumn(label, players) {
+    const col = el('div', 'leader-column');
+    col.append(el('h4', 'card-title', label));
+    const list = el('ol', 'leader-list');
+    players.forEach((p, i) => {
+      const item = el('li', i === 0 ? 'leader-row first' : 'leader-row');
+      item.append(el('span', 'leader-rank', i + 1), NbaMedia.avatar(p.player_id, p.name, i === 0 ? 44 : 32));
+      const who = el('span', 'leader-who');
+      const link = el('a', 'leader-name', p.name);
+      link.href = `/player/${p.player_id}?season=${encodeURIComponent(SEASON)}`;
+      const team = el('span', 'leader-team');
+      if (p.team_id) team.append(NbaMedia.teamLogo(p.team_id, 14));
+      team.append(p.team);
+      who.append(link, team);
+      item.append(who, el('span', 'leader-value', p.value.toFixed(1)));
+      list.append(item);
+    });
+    col.append(list);
+    return col;
+  }
+
+  // ---- Standings snapshot ----
+  async function loadStandingsSnapshot() {
+    const container = document.getElementById('standings-snapshot');
+    UI.skeleton(container, 'rows', 8);
+    try {
+      const res = await fetch(`/api/standings?season=${encodeURIComponent(SEASON)}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      container.replaceChildren(
+        snapshotTable('East', data.east.slice(0, SNAPSHOT_ROWS)),
+        snapshotTable('West', data.west.slice(0, SNAPSHOT_ROWS)),
+      );
+    } catch (e) {
+      console.error(e);
+      message(container, e.message || "Couldn't load standings.", 'error');
+    }
+  }
+
+  function snapshotTable(conference, rows) {
+    const wrap = el('div', 'snapshot');
+    wrap.append(el('h4', 'card-title', conference));
+    const table = el('table', 'data-table snapshot-table');
+    const head = el('tr');
+    ['#', 'Team', 'W-L', 'GB'].forEach(h => head.append(el('th', h === 'Team' ? 'team-col' : null, h)));
+    table.append(el('thead'));
+    table.tHead.append(head);
+    const body = el('tbody');
+    rows.forEach(r => {
+      const tr = el('tr');
+      const team = el('td', 'team-col');
+      const link = el('a');
+      link.href = `/team-trends?team_id=${r.team_id}&season=${encodeURIComponent(SEASON)}`;
+      link.append(NbaMedia.teamLogo(r.team_id, 20), r.team);
+      team.append(link);
+      tr.append(el('td', null, r.rank), team, el('td', null, `${r.wins}-${r.losses}`),
+                el('td', null, r.games_back === 0 ? '—' : r.games_back.toFixed(1)));
+      body.append(tr);
+    });
+    table.append(body);
+    wrap.append(table);
+    return wrap;
+  }
+
+  // ---- Player search ----
+  function setupSearch() {
+    const input = document.getElementById('home-search');
+    const results = document.getElementById('home-search-results');
+    let timer;
+    let requestId = 0;
+
+    const hide = () => { results.style.display = 'none'; };
+
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) return hide();
+      timer = setTimeout(async () => {
+        const id = ++requestId;
+        const res = await fetch(`/api/search-players?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (id !== requestId) return;
+        const players = data.success ? data.players : [];
+        results.replaceChildren(...(players.length ? players.map(p => {
+          const a = el('a', 'search-option search-player');
+          a.href = `/player/${p.id}`;
+          a.append(NbaMedia.avatar(p.id, p.name, 28), el('span', null, p.name));
+          if (!p.is_active) a.append(el('span', 'search-note', 'Retired'));
+          return a;
+        }) : [el('div', 'no-results', 'No players found')]));
+        results.style.display = 'block';
+      }, 200);
+    });
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Escape') hide();
+      if (e.key === 'Enter') {
+        const first = results.querySelector('a');
+        if (first) window.location.href = first.href;
+      }
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.hero-search')) hide();
+    });
+  }
+</script>
 {% endblock %}

@@ -223,6 +223,71 @@ class GameLogApiTest(unittest.TestCase):
         self.assertEqual(data["games"], [])
 
 
+class RosterAnalysisApiTest(unittest.TestCase):
+    def test_most_efficient_is_per_game(self):
+        nba_client._CACHE.clear()
+        roster = pd.DataFrame([{"PLAYER_ID": 77, "PLAYER_NAME": "Star", "GP": 10, "PTS": 300, "REB": 50, "AST": 60,
+                                "STL": 10, "BLK": 5, "FGA": 200, "FGM": 100, "FTA": 50, "FTM": 40, "TOV": 25}])
+        endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), roster]))
+        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint):
+            data = app_module.app.test_client().get("/api/roster-analysis/1?season=2024-25").get_json()
+        # (300+50+60+10+5) - ((200-100) + (50-40) + 25) = 290 over 10 games
+        self.assertEqual(data["most_efficient"]["stat"], 29.0)
+        self.assertEqual(data["top_scorer"]["stat"], 30.0)
+        self.assertEqual(data["top_scorer"]["player_id"], 77)
+
+
+class HomeApiTest(unittest.TestCase):
+    def setUp(self):
+        nba_client._CACHE.clear()
+        self.client = app_module.app.test_client()
+
+    def test_games_today_reads_home_and_away_from_game_code(self):
+        games = pd.DataFrame([{"gameId": "1", "gameCode": "20250115/NYKPHI", "gameStatus": 3,
+                               "gameStatusText": "Final/OT ", "gameLabel": "", "seriesText": ""}])
+        teams_df = pd.DataFrame([
+            {"gameId": "1", "teamId": 20, "teamCity": "Philadelphia", "teamName": "76ers",
+             "teamTricode": "PHI", "wins": 15, "losses": 24, "score": 119},
+            {"gameId": "1", "teamId": 10, "teamCity": "New York", "teamName": "Knicks",
+             "teamTricode": "NYK", "wins": 27, "losses": 15, "score": 125},
+        ])
+        endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), games, teams_df]))
+        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint):
+            data = self.client.get("/api/games-today").get_json()
+        game = data["games"][0]
+        self.assertEqual((game["away"]["tricode"], game["away"]["score"]), ("NYK", 125))
+        self.assertEqual((game["home"]["tricode"], game["home"]["score"]), ("PHI", 119))
+        self.assertEqual(game["status_text"], "Final/OT")
+
+    def test_league_leaders_require_half_the_max_games(self):
+        df = pd.DataFrame([
+            {"PLAYER_ID": 1, "PLAYER_NAME": "Regular", "TEAM_ID": 5, "TEAM_ABBREVIATION": "AAA",
+             "GP": 60, "PTS": 1500, "REB": 300, "AST": 300},
+            {"PLAYER_ID": 2, "PLAYER_NAME": "Cameo", "TEAM_ID": 6, "TEAM_ABBREVIATION": "BBB",
+             "GP": 5, "PTS": 200, "REB": 10, "AST": 10},
+        ])
+        with mock.patch.object(app_module, "get_league_player_stats", return_value=df):
+            data = self.client.get("/api/league-leaders?season=2024-25").get_json()
+        self.assertEqual(data["min_games"], 30)
+        self.assertEqual([p["name"] for p in data["leaders"]["PTS"]], ["Regular"])
+        self.assertEqual(data["leaders"]["PTS"][0]["value"], 25.0)
+
+
+class TeamMonthlySeriesApiTest(unittest.TestCase):
+    def test_skips_months_without_games_and_returns_records(self):
+        log = pd.DataFrame([
+            {"GAME_DATE": "Oct 24, 2024", "WL": "W"},
+            {"GAME_DATE": "Oct 26, 2024", "WL": "L"},
+            {"GAME_DATE": "Dec 02, 2024", "WL": "W"},
+        ])
+        with mock.patch.object(app_module, "get_team_gamelog_cached", return_value=log):
+            data = app_module.app.test_client().get(
+                "/api/team-monthly-series?team_id=1&season=2024-25").get_json()
+        self.assertEqual(data["months"], ["Oct", "Dec"])
+        self.assertEqual(data["win_pct"], [50.0, 100.0])
+        self.assertEqual((data["wins"], data["losses"]), ([1, 1], [1, 0]))
+
+
 class StandingsApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()

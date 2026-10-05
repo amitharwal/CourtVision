@@ -12,7 +12,7 @@
         <p>Regular-season standings by conference</p>
     </section>
 
-    <section class="standings-controls">
+    <section class="panel standings-controls">
         <div class="control-group">
             <label for="season-select">Season</label>
             <select id="season-select">
@@ -27,16 +27,16 @@
         </div>
     </section>
 
-    <p id="standings-status" class="status">Loading standings...</p>
+    <div id="standings-status" class="panel standings-status"></div>
 
     <div id="standings" class="standings-grid" hidden>
-        <section class="conference">
-            <h3>Eastern Conference</h3>
-            <div class="table-wrap"><table id="east-table"></table></div>
+        <section class="panel conference">
+            <h3 class="conference-title">Eastern Conference</h3>
+            <div class="table-wrap"><table id="east-table" class="data-table"></table></div>
         </section>
-        <section class="conference">
-            <h3>Western Conference</h3>
-            <div class="table-wrap"><table id="west-table"></table></div>
+        <section class="panel conference">
+            <h3 class="conference-title">Western Conference</h3>
+            <div class="table-wrap"><table id="west-table" class="data-table"></table></div>
         </section>
     </div>
 {% endblock %}
@@ -98,7 +98,7 @@
           td.className = 'team-col';
           const a = document.createElement('a');
           a.href = `/team-trends?team_id=${r.team_id}&season=${encodeURIComponent(season)}`;
-          a.textContent = r.team;
+          a.append(NbaMedia.teamLogo(r.team_id, 24), r.team);
           td.appendChild(a);
         } else {
           td.textContent = formatCell(key, r[key]);
@@ -115,9 +115,14 @@
   async function loadStandings() {
     const season = seasonSelect.value;
     UrlState.set({ season });
-    status.textContent = 'Loading standings...';
-    status.hidden = false;
-    grid.hidden = true;
+    // First load shows placeholders; a season change dims the current tables instead.
+    const firstLoad = grid.hidden;
+    if (firstLoad) {
+      UI.skeleton(status, 'rows', 12);
+      status.hidden = false;
+    } else {
+      UI.refreshing(grid, true);
+    }
 
     try {
       const res = await fetch(`/api/standings?season=${encodeURIComponent(season)}`);
@@ -132,7 +137,11 @@
       grid.hidden = false;
     } catch (e) {
       console.error(e);
-      status.textContent = e.message || 'Unable to load standings. Please try again.';
+      const text = e.message || 'Unable to load standings. Please try again.';
+      if (firstLoad) status.replaceChildren(Object.assign(document.createElement('p'), { className: 'error', textContent: text }));
+      else UI.toast(text, { kind: 'error' });
+    } finally {
+      UI.refreshing(grid, false);
     }
   }
 </script>

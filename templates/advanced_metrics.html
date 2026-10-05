@@ -3,18 +3,19 @@
 {% block title %}Advanced Metrics{% endblock %}
 
 {% block head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/static/css/advanced_metrics.css">
 {% endblock %}
 
 {% block content %}
 
-        <section class="metrics-header">
+        <section class="page-header">
             <h2>Advanced NBA Metrics Dashboard</h2>
-            <p>Deep dive into PER, True Shooting %, Usage Rate, and other advanced statistics</p>
+            <p>League leaders in True Shooting %, Usage Rate, Player Impact Estimate and more</p>
         </section>
 
-        <section class="metrics-controls">
-            <div class="control-row">
+        <section class="panel">
+            <div class="controls-row">
                 <div class="control-group">
                     <label for="metric-select">Select Metric</label>
                     <select id="metric-select">
@@ -55,11 +56,11 @@
                            title="True shooting attempts: FGA + 0.44 × FTA">
                 </div>
 
-                <button id="load-metrics" class="load-btn">Load Metrics</button>
+                <button id="load-metrics" class="btn">Load Metrics</button>
             </div>
         </section>
 
-        <section class="metric-explanation">
+        <section class="panel metric-explanation">
             <h3 id="metric-name">True Shooting %</h3>
             <p id="metric-description">True Shooting Percentage (TS%) measures shooting efficiency by accounting for field goals, 3-pointers, and free throws.</p>
             <div id="metric-formula" class="formula">
@@ -67,19 +68,19 @@
             </div>
         </section>
 
-        <section id="metrics-visualization" class="metrics-visualization" style="display: none;">
-            <div class="viz-tabs">
-                <button class="viz-tab active" data-view="leaders">League Leaders</button>
-                <button class="viz-tab" data-view="distribution">Distribution</button>
-                <button class="viz-tab" data-view="comparison">Position Comparison</button>
+        <section id="metrics-visualization" class="panel" style="display: none;">
+            <div class="tabs">
+                <button class="tab viz-tab active" data-view="leaders">League Leaders</button>
+                <button class="tab viz-tab" data-view="distribution">Distribution</button>
+                <button class="tab viz-tab" data-view="comparison">Position Comparison</button>
             </div>
 
             <div id="viz-content" class="viz-content">
             </div>
         </section>
 
-        <section id="metrics-insights" class="metrics-insights" style="display: none;">
-            <h3>Key Insights</h3>
+        <section id="metrics-insights" class="panel" style="display: none;">
+            <h3 class="panel-title">Key Insights</h3>
             <div id="insights-grid" class="insights-grid">
             </div>
         </section>
@@ -215,8 +216,11 @@
         }
 
         async function loadMetrics() {
-            showLoading(true);
-            hideAllSections();
+            // Reloads keep the current results on screen, dimmed; the first load shows the spinner
+            const panels = ['metrics-visualization', 'metrics-insights'].map(id => document.getElementById(id));
+            const refreshing = panels[0].style.display === 'block';
+            if (refreshing) panels.forEach(el => UI.refreshing(el, true));
+            else { showLoading(true); hideAllSections(); }
 
             const season = document.getElementById('season-select').value;
             const seasonType = document.getElementById('season-type').value;
@@ -246,6 +250,7 @@
                 showMessage('Error loading metrics. Please try again.');
             } finally {
                 showLoading(false);
+                panels.forEach(el => UI.refreshing(el, false));
             }
         }
 
@@ -273,11 +278,17 @@
             content.innerHTML = `
                 <div class="leaders-grid">
                     ${top20.map((player, index) => `
-                        <div class="leader-card ${player[currentMetric] >= metric.eliteValue ? 'elite' : player[currentMetric] >= metric.goodValue ? 'good' : ''}">
+                        <div class="card leader-card ${player[currentMetric] >= metric.eliteValue ? 'elite' : player[currentMetric] >= metric.goodValue ? 'good' : ''}">
                             <div class="rank">#${index + 1}</div>
                             <div class="leader-info">
-                                <div class="player-name">${player.PLAYER_NAME}</div>
-                                <div class="player-team">${player.TEAM_ABBREVIATION}</div>
+                                ${NbaMedia.avatarHtml(player.PLAYER_ID, player.PLAYER_NAME, 52)}
+                                <div>
+                                    <div class="player-name">${player.PLAYER_NAME}</div>
+                                    <div class="player-team">
+                                        ${player.TEAM_ID ? `<img class="team-logo" src="${NbaMedia.teamLogoUrl(player.TEAM_ID)}" alt="" width="16" height="16" loading="lazy" onerror="this.remove()">` : ''}
+                                        ${player.TEAM_ABBREVIATION}
+                                    </div>
+                                </div>
                             </div>
                             <div class="metric-value">${formatMetricValue(currentMetric, player[currentMetric])}</div>
                             <div class="supporting-stats">
@@ -290,52 +301,82 @@
             `;
         }
 
+        let distributionChart = null;
+
         function displayDistribution() {
             const content = document.getElementById('viz-content');
+            const metric = metricDescriptions[currentMetric];
             const values = playersData.map(p => p[currentMetric]);
+            const sorted = [...values].sort((a, b) => b - a);
             const min = Math.min(...values);
             const max = Math.max(...values);
-            const range = max - min;
             const buckets = 10;
-            const bucketSize = range / buckets;
+            const bucketSize = (max - min) / buckets || 1;  // all-equal values -> one bucket
+            const digits = max - min < 20 ? 1 : 0;
 
-            // Create histogram data
-            const histogram = Array(buckets).fill(0);
+            const counts = Array(buckets).fill(0);
             values.forEach(val => {
-                const bucket = Math.min(Math.floor((val - min) / bucketSize), buckets - 1);
-                histogram[bucket]++;
+                counts[Math.min(Math.floor((val - min) / bucketSize), buckets - 1)]++;
             });
-
-            const maxCount = Math.max(...histogram);
+            const ranges = counts.map((_, i) =>
+                `${(min + i * bucketSize).toFixed(digits)}–${(min + (i + 1) * bucketSize).toFixed(digits)}`);
 
             content.innerHTML = `
                 <div class="distribution-chart">
-                    <h4>Player Distribution by ${metricDescriptions[currentMetric].name}</h4>
-                    <div class="histogram">
-                        ${histogram.map((count, i) => `
-                            <div class="hist-bar-container">
-                                <div class="hist-count">${count}</div>
-                                <div class="hist-bar" style="height: ${(count / maxCount) * 200}px"></div>
-                                <div class="hist-label">${(min + i * bucketSize).toFixed(0)}-${(min + (i + 1) * bucketSize).toFixed(0)}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div class="distribution-stats">
+                    <h4>Player distribution by ${metric.name}</h4>
+                    <div class="chart-box"><canvas id="distribution-chart" role="img" aria-label="Histogram of players by ${metric.name}"></canvas></div>
+                    <div class="card distribution-stats">
                         <div class="dist-stat">
-                            <span>Average:</span>
+                            <span>Average</span>
                             <strong>${(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)}</strong>
                         </div>
                         <div class="dist-stat">
-                            <span>Top 10%:</span>
-                            <strong>≥ ${values.sort((a, b) => b - a)[Math.floor(values.length * 0.1)].toFixed(1)}</strong>
+                            <span>Top 10%</span>
+                            <strong>≥ ${sorted[Math.floor(sorted.length * 0.1)].toFixed(1)}</strong>
                         </div>
                         <div class="dist-stat">
-                            <span>Elite (Top 5%):</span>
-                            <strong>≥ ${values[Math.floor(values.length * 0.05)].toFixed(1)}</strong>
+                            <span>Top 5%</span>
+                            <strong>≥ ${sorted[Math.floor(sorted.length * 0.05)].toFixed(1)}</strong>
                         </div>
                     </div>
                 </div>
             `;
+
+            CourtCharts.applyDefaults();
+            if (distributionChart) distributionChart.destroy();
+            distributionChart = new Chart(document.getElementById('distribution-chart'), {
+                type: 'bar',
+                data: {
+                    labels: ranges,
+                    // Histogram bins are continuous: let bars fill their bin, separated only
+                    // by a 2px surface gap (1px surface border on each side).
+                    datasets: [{
+                        label: 'Players',
+                        data: counts,
+                        backgroundColor: CourtCharts.colors().accent,
+                        borderColor: CourtCharts.colors().surface,
+                        borderWidth: { left: 1, right: 1 },
+                        barPercentage: 1,
+                        categoryPercentage: 1,
+                        maxBarThickness: Infinity,
+                    }],
+                },
+                options: {
+                    plugins: {
+                        tooltip: {
+                            displayColors: false,
+                            callbacks: {
+                                title: items => `${metric.name}: ${items[0].label}`,
+                                label: item => `${item.parsed.y} player${item.parsed.y === 1 ? '' : 's'}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+                        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Players' } },
+                    },
+                },
+            });
         }
 
         function displayPositionComparison() {
@@ -358,7 +399,7 @@
                             const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
                             const top = values.length > 0 ? Math.max(...values) : 0;
                             return `
-                                <div class="position-card">
+                                <div class="card position-card">
                                     <h5>${pos === 'G' ? 'Guards' : pos === 'F' ? 'Forwards' : 'Centers'}</h5>
                                     <div class="pos-avg">${avg.toFixed(1)}</div>
                                     <div class="pos-label">Average</div>
@@ -382,20 +423,20 @@
             const elitePlayers = playersData.filter(p => p[currentMetric] >= metric.eliteValue).length;
 
             container.innerHTML = `
-                <div class="insight-card">
+                <div class="card insight-card">
                     <div class="insight-icon">📊</div>
                     <div class="insight-text">
                         <strong>${elitePlayers}</strong> players (${((elitePlayers / playersData.length) * 100).toFixed(1)}%)
                         have elite ${metric.name} values (≥${metric.eliteValue})
                     </div>
                 </div>
-                <div class="insight-card">
+                <div class="card insight-card">
                     <div class="insight-icon">🎯</div>
                     <div class="insight-text">
                         League average ${metric.name} is <strong>${avg.toFixed(1)}</strong>
                     </div>
                 </div>
-                <div class="insight-card">
+                <div class="card insight-card">
                     <div class="insight-icon">🏆</div>
                     <div class="insight-text">
                         ${playersData[0].PLAYER_NAME} leads the league with

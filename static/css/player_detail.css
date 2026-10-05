@@ -1,149 +1,231 @@
-:root {
-  --primary: #000000;
-  --secondary: #FFFFFF;
-  --accent: #FF5E5B;
-  --success: #4CAF50;
-  --muted: #666666;
-  --light-gray: #f5f5f5;
-  --shadow: 6px 6px 0px var(--primary);
+/* Player page. Shared components live in base.css. */
+
+.back-link {
+  margin-bottom: var(--space-4);
 }
 
-* { margin:0; padding:0; box-sizing:border-box; font-family:'Courier New', monospace; }
+.back-link a {
+  text-decoration: none;
+  font-weight: bold;
+}
 
-body {
-  background-color: var(--light-gray);
-  color: var(--primary);
+.back-link a:hover {
+  color: var(--accent);
+}
+
+.player-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.player-sidebar {
   display: flex;
-  justify-content: center;
-  padding: 20px;
-  min-height: 100vh;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
-.container { width:100%; max-width:1200px; }
-
-header {
-  display:flex; justify-content:space-between; align-items:center;
-  border:2px solid var(--primary); padding:20px; box-shadow:var(--shadow);
-  margin-bottom:20px; background-color:var(--secondary);
+.player-sidebar .panel,
+.player-main .panel {
+  margin-bottom: 0;
 }
 
-.logo { font-size:24px; font-weight:bold; }
-
-nav { display:flex; gap:10px; }
-nav a { text-decoration:none; color:var(--primary); font-weight:bold; border:2px solid var(--primary);
-  padding:8px 16px; transition:all 0.3s; background:var(--secondary); }
-nav a:hover, nav a.active { box-shadow:3px 3px 0 var(--primary); transform:translate(-2px,-2px);
-  background:var(--accent); color:var(--secondary); }
-
-.back-link { margin-bottom: 16px; }
-.back-link a { color:var(--primary); text-decoration:none; font-weight:bold; }
-.back-link a:hover { color:var(--accent); }
-
-.player-layout { display:grid; grid-template-columns: 320px 1fr; gap:20px; }
-
-.player-sidebar { display:flex; flex-direction:column; gap:16px; }
-
+/* ---- Player card ---- */
 .player-card {
-  display:flex; gap:16px; align-items:center;
-  border:2px solid var(--primary); background:var(--secondary); padding:16px; box-shadow:var(--shadow);
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-4);
 }
 
-.player-card-body h1 { font-size:22px; margin-bottom:6px; }
-.player-meta { font-size:13px; color:var(--muted); margin-bottom:8px; }
-.player-physical { display:flex; flex-wrap:wrap; gap:8px; font-size:12px; }
-.player-physical span { background:var(--light-gray); border:1px solid var(--primary); padding:3px 6px; }
-
-.compare-large-btn {
-  margin-top:10px; padding:8px 16px; background:var(--primary); color:var(--secondary);
-  border:2px solid var(--primary); font-weight:bold; cursor:pointer; transition:.2s;
+.player-card-body {
+  min-width: 0;
 }
-.compare-large-btn:hover { background:var(--secondary); color:var(--primary); }
 
-.season-list { border:2px solid var(--primary); background:var(--secondary); box-shadow:var(--shadow); }
-.season-list h3 { padding:10px 12px; border-bottom:2px solid var(--primary); }
-.season-list ul { max-height:480px; overflow:auto; list-style:none; }
-.season-list li { padding:10px 12px; border-bottom:1px solid #eee; cursor:pointer; }
-.season-list li:hover { background:#fafafa; }
-.season-list li.active { background:#fffbe6; font-weight:700; }
-.season-list li.loading, .season-list li.error, .season-list li.no-data { cursor:default; }
+.player-card-body h1 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  margin-bottom: var(--space-1);
+}
 
-.player-main { display:flex; flex-direction:column; gap:12px; }
+.player-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
 
-.stats-tabs { display:flex; gap:10px; }
-.tab-btn { padding:10px 20px; border:2px solid var(--primary); background:var(--light-gray); font-weight:bold; cursor:pointer; }
-.tab-btn.active { background:var(--secondary); box-shadow:-2px -2px 0 var(--primary); }
+.player-physical {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: var(--fs-xs);
+}
 
-.stats-content { border:2px solid var(--primary); padding:20px; background:var(--secondary); min-height:420px; box-shadow:var(--shadow); }
-.tab-content { display:none; }
-.tab-content.active { display:block; }
+.player-physical span {
+  background-color: var(--light-gray);
+  border: 1px solid var(--primary);
+  padding: 2px 6px;
+}
 
-.loading { text-align:center; padding:32px; color:var(--muted); }
-.no-data { text-align:center; padding:32px; color:var(--muted); }
-.error { text-align:center; padding:32px; color:var(--accent); font-weight:bold; }
+.compare-btn {
+  margin-top: var(--space-3);
+}
 
-.stats-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; }
-.stat-card { border:2px solid var(--primary); background:var(--light-gray); padding:14px; }
-.stat-card h3 { margin-bottom:8px; border-bottom:1px solid var(--primary); padding-bottom:6px; }
-.stat-item { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; }
-.stat-item:last-child { border-bottom:none; }
+/* ---- Season list ---- */
+.season-list {
+  padding: 0;
+}
 
-.career-stats-table { overflow-x:auto; margin-top:16px; }
-.career-stats-table table { width:100%; border-collapse:collapse; border:2px solid var(--primary); background:var(--secondary); }
-.career-stats-table th { background:var(--primary); color:var(--secondary); padding:8px; position:sticky; top:0; }
-.career-stats-table td { padding:8px; border-bottom:1px solid #eee; }
+.season-list h3 {
+  font-family: var(--font-display);
+  padding: var(--space-3);
+  border-bottom: var(--border);
+}
 
-.shot-chart-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:2px solid var(--primary); padding-bottom:8px; }
-.shot-stats { display:flex; gap:10px; }
-.shot-stats span { padding:4px 10px; border:2px solid var(--primary); font-weight:bold; }
-.shot-stats .made { background:var(--success); color:var(--secondary); }
-.shot-stats .missed { background:var(--accent); color:var(--secondary); }
+.season-list ul {
+  max-height: 480px;
+  overflow: auto;
+  list-style: none;
+}
 
-.court-container { display:flex; justify-content:center; margin-top:8px; }
-.basketball-court { border:2px solid var(--primary); box-shadow:var(--shadow); }
+.season-list li {
+  border-bottom: var(--border-thin);
+}
 
-footer { text-align:center; font-size:14px; color:var(--primary); margin-top:40px; }
-footer a { color:var(--primary); font-weight:bold; }
+.season-list li.loading,
+.season-list li.error,
+.season-list li.no-data {
+  padding: 10px var(--space-3);
+}
+
+.season-item {
+  padding: 10px var(--space-3);
+}
+
+.season-item:hover {
+  background-color: var(--light-gray);
+}
+
+.season-item.active {
+  background-color: var(--accent-soft);
+  box-shadow: inset 4px 0 0 var(--accent);
+  font-weight: bold;
+}
+
+.season-item:focus-visible {
+  outline-offset: -3px;
+}
+
+/* ---- Main column ---- */
+.player-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.season-context {
+  font-weight: bold;
+}
+
+.badges {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.badges:empty {
+  display: none;
+}
+
+.stats-content {
+  min-height: 420px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.career-table {
+  margin-top: var(--space-5);
+}
+
+.data-table tr.active-row td {
+  background-color: var(--accent-soft);
+  font-weight: bold;
+}
+
+/* ---- Game log ---- */
+.gamelog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  border-bottom: var(--border);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+.gamelog-header h3 {
+  font-family: var(--font-display);
+}
+
+.gamelog-controls {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.gamelog-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.gamelog-controls select {
+  padding: 6px 8px;
+}
+
+.gamelog-table {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.gamelog-table .data-table th {
+  position: sticky;
+  top: 0;
+}
+
+.gamelog-table td {
+  white-space: nowrap;
+}
+
+.gamelog-table tr.win td:nth-child(3) {
+  color: var(--success-text);
+  font-weight: bold;
+}
+
+.gamelog-table tr.loss td:nth-child(3) {
+  color: var(--danger-text);
+  font-weight: bold;
+}
 
 @media (max-width: 900px) {
-  .player-layout { grid-template-columns: 1fr; }
-  .season-list ul { max-height: unset; }
+  .player-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .season-list ul {
+    max-height: 240px;
+  }
 }
-
-/* --- harden the avatar to a perfect circle --- */
-.player-avatar-large{
-  /* lock a square frame */
-  width: 96px;
-  aspect-ratio: 1 / 1;      /* always square */
-  height: auto;             /* respects aspect ratio */
-  flex: 0 0 96px;           /* prevent flex from stretching it */
-
-  /* circle + centering */
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  overflow: hidden;
-
-  /* keep text nicely centered */
-  line-height: 1;
-  font-size: 28px;
-  font-weight: 700;
-
-  /* keep your existing theme */
-  background: var(--accent);
-  color: var(--secondary);
-  border: 2px solid var(--primary);
-}
-/* --- game log --- */
-.gamelog { border:2px solid var(--primary); padding:20px; background:var(--secondary); box-shadow:var(--shadow); margin-top:12px; }
-.gamelog-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;
-  border-bottom:2px solid var(--primary); padding-bottom:10px; margin-bottom:14px; }
-.gamelog-controls { display:flex; gap:12px; flex-wrap:wrap; }
-.gamelog-controls label { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:bold; text-transform:uppercase; }
-.gamelog-controls select { padding:6px 8px; border:2px solid var(--primary); background:var(--secondary); font-family:inherit; cursor:pointer; }
-.gamelog-chart { position:relative; height:300px; }
-.gamelog-legend { font-size:12px; color:var(--muted); margin-top:8px; }
-.gamelog-table { max-height:420px; overflow:auto; }
-.gamelog-table td { white-space:nowrap; text-align:center; }
-.gamelog-table tr.win td:nth-child(3) { color:#2E7D32; font-weight:bold; }
-.gamelog-table tr.loss td:nth-child(3) { color:#C62828; font-weight:bold; }
-.player-main { min-width:0; }

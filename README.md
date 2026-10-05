@@ -2,6 +2,8 @@
 An NBA analytics web app built with Flask and [nba_api](https://github.com/swar/nba_api).
 
 ## Features
+- **Home dashboard**: today's games with live scores, league leaders, a standings snapshot
+  and player search
 - **Players**: search every NBA player and open a career detail page with a game-by-game
   log and rolling-average chart (regular season or playoffs)
 - **Teams**: season record, efficiency ratings, monthly win % and roster leaders

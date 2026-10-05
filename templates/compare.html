@@ -8,22 +8,22 @@
 
 {% block content %}
 
-        <section class="compare-header">
+        <section class="page-header">
             <h2>Player Comparison Tool</h2>
             <p>Select up to 4 players to compare their stats side-by-side</p>
         </section>
 
-        <section class="player-selection">
+        <section class="panel player-selection">
             <div class="selected-players" id="selected-players">
             </div>
 
-            <div class="add-player-section">
+            <div class="search-field">
                 <input type="text" id="player-search" placeholder="Search for a player...">
-                <div id="search-results" class="search-results"></div>
+                <div id="search-results" class="search-dropdown"></div>
             </div>
         </section>
 
-        <section id="comparison-section" class="comparison-section" style="display: none;">
+        <section id="comparison-section" class="panel comparison-section" style="display: none;">
             <div class="season-selector">
                 <label for="season-select">Season</label>
                 <select id="season-select">
@@ -35,7 +35,7 @@
                     <option value="regular">Regular Season</option>
                     <option value="playoffs">Playoffs</option>
                 </select>
-                <button id="refresh-comparison" class="refresh-btn">Refresh</button>
+                <button id="refresh-comparison" class="btn btn-secondary btn-sm">Refresh</button>
             </div>
 
             <div id="comparison-content" class="comparison-content">
@@ -63,6 +63,15 @@
       .addEventListener('change', loadComparison);
     document.getElementById('season-type')
       .addEventListener('change', loadComparison);
+
+    // Close the search dropdown on an outside click or Escape
+    const results = document.getElementById('search-results');
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.search-field')) results.style.display = 'none';
+    });
+    document.getElementById('player-search').addEventListener('keydown', e => {
+      if (e.key === 'Escape') results.style.display = 'none';
+    });
   }
 
   // ?players=2544,201939&season=2024-25&type=playoffs overrides the saved list
@@ -101,19 +110,13 @@
       out.innerHTML = `<div class="no-results">No players found</div>`;
       return out.style.display = 'block';
     }
-    out.replaceChildren(...list.map(p => {
-      const div = document.createElement('div');
-      div.className = 'search-result';
-      div.textContent = `${p.name} ${p.is_active ? '✓' : '(Retired)'}`;
-      div.addEventListener('click', () => addPlayer(p.id, p.name));
-      return div;
-    }));
+    out.replaceChildren(...list.map(p => UI.playerOption(p, () => addPlayer(p.id, p.name))));
     out.style.display = 'block';
   }
 
   function addPlayer(id, name) {
-    if (selectedPlayers.find(p => p.id === id)) return alert('Already added');
-    if (selectedPlayers.length >= 4)         return alert('Max 4 players');
+    if (selectedPlayers.find(p => p.id === id)) return UI.toast(`${name} is already in the comparison.`);
+    if (selectedPlayers.length >= 4) return UI.toast('You can compare up to 4 players. Remove one first.', { kind: 'error' });
     selectedPlayers.push({ id, name });
     saveToLocalStorage();
     updateSelectedDisplay();
@@ -139,19 +142,22 @@
     }
     c.innerHTML = selectedPlayers.map((p,i) => `
       <div class="selected-player">
-        <span class="player-number">${i+1}</span>
+        ${NbaMedia.avatarHtml(p.id, p.name, 32)}
         <span class="player-name">${p.name}</span>
-        <button class="remove-btn" onclick="removePlayer(${p.id})">×</button>
+        <button class="remove-btn" onclick="removePlayer(${p.id})" aria-label="Remove ${p.name}">×</button>
       </div>
     `).join('')
-      + (selectedPlayers.length<4 ? '<div class="add-slot">+ Add Player</div>' : '');
+      + (selectedPlayers.length<4 ? '<button type="button" class="add-slot" onclick="document.getElementById(\'player-search\').focus()">+ Add Player</button>' : '');
   }
 
   async function loadComparison() {
     if (!selectedPlayers.length) return;
     document.getElementById('comparison-section').style.display = 'block';
     const content = document.getElementById('comparison-content');
-    content.innerHTML = '<div class="loading">Loading player stats…</div>';
+    // Keep the current comparison on screen, dimmed, while new stats load
+    const refreshing = !!content.querySelector('.comparison-grid');
+    if (refreshing) UI.refreshing(content, true);
+    else UI.skeleton(content, 'rows', 10);
     const season = document.getElementById('season-select').value;
     const playoffs = document.getElementById('season-type').value === 'playoffs';
     const typeLabel = playoffs ? 'playoff' : 'regular-season';
@@ -203,8 +209,10 @@
       }
     } catch (e) {
       console.error(e);
-      document.getElementById('comparison-content').innerHTML =
-        '<div class="error">Failed to load player stats</div>';
+      if (refreshing) UI.toast('Failed to load player stats.', { kind: 'error' });
+      else content.innerHTML = '<div class="error">Failed to load player stats</div>';
+    } finally {
+      UI.refreshing(content, false);
     }
   }
 
@@ -224,6 +232,7 @@
       const st = playerStats[p.id] || {};
       html += `
         <div class="player-header-cell">
+          ${NbaMedia.avatarHtml(p.id, p.name, 64)}
           <div class="player-name">${p.name}</div>
           <div class="player-team">${st.TEAM_ABBREVIATION === 'TOT' ? 'Multiple teams' : (st.TEAM_ABBREVIATION || 'N/A')}</div>
         </div>`;
