@@ -1,24 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Court Vision 🏀</title>
+{% extends "base.html" %}
+
+{% block title %}Court Vision 🏀{% endblock %}
+
+{% block head %}
     <link rel="stylesheet" href="/static/css/home.css">
-  </head>
-<body>
-  <div class="container">
-    <header>
-      <div class="logo">Court Vision 🏀</div>
-      <nav>
-        <a href="/" class="active">Home</a>
-        <a href="/players">Players</a>
-        <a href="/team-trends">Teams</a>
-        <a href="/shot-charts">Shot Charts</a>
-        <a href="/compare">Compare</a>
-        <a href="/advanced-metrics">Adv. Metrics</a>
-      </nav>
-    </header>
+{% endblock %}
+
+{% block content %}
 
     <section class="hero">
       <h2>Court Vision 🏀</h2>
@@ -32,24 +20,14 @@
         <thead>
           <tr>
             <th>Matchup</th>
-            <th>Time</th>
+            <th>Time / Status</th>
             <th>Arena</th>
           </tr>
         </thead>
-        <tbody>
-          {% if games_today %}
-            {% for game in games_today %}
-              <tr>
-                <td class="matchup">{{ game.matchup }}</td>
-                <td>{{ game.game_time }}</td>
-                <td>{{ game.arena }}</td>
-              </tr>
-            {% endfor %}
-          {% else %}
-            <tr>
-              <td colspan="3">No games scheduled today.</td>
-            </tr>
-          {% endif %}
+        <tbody id="games-body">
+          <tr>
+            <td colspan="3">Loading today's games...</td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -59,7 +37,7 @@
       <div class="stats-grid">
         <div class="stat-card">
           <h4>Total Players</h4>
-          <p class="stat-number" id="total-players">Loading...</p>
+          <p class="stat-number">{{ total_players }}</p>
         </div>
         <div class="stat-card">
           <h4>Active Teams</h4>
@@ -71,7 +49,7 @@
         </div>
         <div class="stat-card">
           <h4>Games Today</h4>
-          <div class="stat-number">{{ games_count }}</div>
+          <div class="stat-number" id="games-count">…</div>
         </div>
       </div>
     </section>
@@ -155,38 +133,55 @@
         </div>
       </div>
     </section>
+{% endblock %}
 
-    <footer>
-      <p>© 2025 Court Vision • Built with Flask & NBA API</p>
-      <p class="footer-links">
-        <a href="https://github.com/amitharwal/CourtVision">GitHub</a> •
-        <a href="https://github.com/swar/nba_api">API Docs</a> •
-        <a href="/about">About</a>
-      </p>
-    </footer>
-  </div>
-
+{% block scripts %}
   <script>
     const currentSeason = "{{ seasons[0] }}";
 
   document.addEventListener('DOMContentLoaded', function() {
-    loadQuickStats();
-    document.getElementById('load-data').addEventListener('click', () => location.reload());
+    loadGamesToday();
+    document.getElementById('load-data').addEventListener('click', loadGamesToday);
   });
 
-  async function loadQuickStats() {
+  async function loadGamesToday() {
+    const body = document.getElementById('games-body');
+    const count = document.getElementById('games-count');
+    const cell = text => {
+      const td = document.createElement('td');
+      td.textContent = text ?? '';
+      return td;
+    };
+    const message = text => {
+      const tr = document.createElement('tr');
+      const td = cell(text);
+      td.colSpan = 3;
+      tr.appendChild(td);
+      body.replaceChildren(tr);
+    };
+
+    message("Loading today's games...");
     try {
-      const r = await fetch('/test-api');
+      const r = await fetch('/api/games-today');
       const j = await r.json();
-      if (j.success) {
-        document.getElementById('total-players').textContent = j.players_count;
-      } else {
-        document.getElementById('total-players').textContent = '—';
+      if (!j.success) throw new Error(j.error);
+      count.textContent = j.count;
+      if (!j.games.length) {
+        message('No games scheduled today.');
+        return;
       }
+      body.replaceChildren(...j.games.map(g => {
+        const tr = document.createElement('tr');
+        const matchup = cell(g.matchup);
+        matchup.className = 'matchup';
+        tr.append(matchup, cell(g.game_time), cell(g.arena));
+        return tr;
+      }));
     } catch {
-      document.getElementById('total-players').textContent = '—';
+      count.textContent = '—';
+      message("Couldn't load today's games. Try again shortly.");
     }
   }
+
   </script>
-</body>
-</html>
+{% endblock %}

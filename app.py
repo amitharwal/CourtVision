@@ -1,188 +1,97 @@
 import os
 import io
-import time
-import json
 from datetime import datetime
-from functools import lru_cache
-import threading
-from time import time as _now
 
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file
-
-# nba_api imports
 from nba_api.stats.endpoints import (
-    leaguedashplayerstats,
+    LeagueGameLog,
+    ScoreboardV2,
+    TeamPlayerDashboard,
+    commonplayerinfo,
+    playerprofilev2,
     shotchartdetail,
     teamdashboardbygeneralsplits,
-    playerprofilev2,
-    commonplayerinfo,
-    ScoreboardV2,
-    HomePageLeaders,
-    TeamGameLog,
-    TeamDashboardByGeneralSplits,
-    TeamDashboardByShootingSplits,
-    TeamPlayerDashboard,
-    leaguedashteamstats,
-    teamestimatedmetrics,
-    LeagueGameLog,
-    PlayerGameLog
 )
 from nba_api.stats.static import teams, players
+
+from metrics import calculate_efficiency, calculate_true_shooting
+from nba_client import (
+    TTL_DEFAULT,
+    TTL_SHORT,
+    cached,
+    get_league_player_stats,
+    get_league_team_stats,
+    get_player_positions,
+    get_seasons,
+    get_team_estimated_metrics,
+    get_team_gamelog_cached,
+    nbacall_retry,
+)
 
 # ------------------------------------------------------------------------------
 # Flask app
 # ------------------------------------------------------------------------------
 app = Flask(__name__)
 
-# ------------------------------------------------------------------------------
-# Constants: headers/proxy/timeout
-# ------------------------------------------------------------------------------
-HEADERS = {
-    "Host": "stats.nba.com",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:72.0) Gecko/20100101 Firefox/72.0",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "x-nba-stats-origin": "stats",
-    "x-nba-stats-token": "true",
-    "Connection": "keep-alive",
-    "Referer": "https://stats.nba.com/",
-    "Pragma": "no-cache",
-    "Cache-Control": "no-cache",
-}
+NAV_LINKS = [
+    ("home", "Home"),
+    ("players_page", "Players"),
+    ("team_trends", "Teams"),
+    ("shot_charts", "Shot Charts"),
+    ("compare_players", "Compare"),
+    ("advanced_metrics", "Adv. Metrics"),
+]
 
-PROXIES = {
-    # "http": "http://your-proxy:port",
-    # "https": "http://your-proxy:port",
-}
+# Pages that live under another nav section.
+NAV_PARENTS = {"player_detail": "players_page"}
 
-DEFAULT_TIMEOUT = 60
-
-_TGL_CACHE = {}
-_TGL_LOCK = threading.Lock()
-_TGL_TTL_SECONDS = 1800  # 30 minutes
-
-def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
-    """
-    Fetch TeamGameLog with a small timeout, cache for 30min.
-    Falls back to cached copy immediately if NBA API call fails or times out.
-    """
-    key = (int(team_id), season)
-    now = _now()
-
-    with _TGL_LOCK:
-        entry = _TGL_CACHE.get(key)
-        if entry and now - entry["ts"] < _TGL_TTL_SECONDS:
-            return entry["df"]
-
-    try:
-        df = nbacall_retry(
-            TeamGameLog,
-            team_id=int(team_id),
-            season=season,
-            season_type_all_star="Regular Season",
-            timeout=timeout_sec,
-        ).get_data_frames()[0]
-        if df is None:
-            df = pd.DataFrame()
-        with _TGL_LOCK:
-            _TGL_CACHE[key] = {"ts": now, "df": df}
-        return df
-    except Exception as e:
-        print(f"[WARN] get_team_gamelog_cached fallback due to: {e}")
-        with _TGL_LOCK:
-            entry = _TGL_CACHE.get(key)
-            if entry:
-                return entry["df"]
-        return pd.DataFrame()
-
-def get_seasons(start_year: int = 1951):
-    """
-    Ordered newest -> oldest.
-    NBA season spans two years. If it's October or later, treat the current calendar
-    year as the new season's start (e.g., December 2025 -> 2025-26). Before October,
-    the latest completed is last year's start (e.g., August 2025 -> 2024-25).
-    """
-    today = datetime.now()
-    current_year = today.year
-    latest_start_year = current_year if today.month >= 10 else current_year - 1
-
-    seasons = []
-    for year in range(latest_start_year, start_year - 1, -1):
-        seasons.append(f"{year}-{str(year + 1)[-2:]}")
-    return seasons
-
-def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs):
-    """
-    Wrapper for nba_api endpoint classes with consistent headers/timeout/proxy and
-    a simple retry with linear backoff.
-    """
-    kwargs.setdefault("headers", HEADERS)
-    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
-    if PROXIES:
-        kwargs.setdefault("proxy", PROXIES)
-
-    last_err = None
-    for attempt in range(1, retries + 1):
-        try:
-            return endpoint_cls(**kwargs)
-        except Exception as e:
-            last_err = e
-            if attempt < retries:
-                time.sleep(backoff * attempt)
-            else:
-                raise
-    if last_err:
-        raise last_err
-
-def calculate_true_shooting(row):
-    pts = row.get("PTS", 0)
-    fga = row.get("FGA", 0)
-    fta = row.get("FTA", 0)
-    denom = fga + 0.44 * fta
-    if denom == 0:
-        return 0
-    return (pts / (2 * denom)) * 100
-
-def calculate_efficiency(row):
-    positive = row.get("PTS", 0) + row.get("REB", 0) + row.get("AST", 0) + row.get("STL", 0) + row.get("BLK", 0)
-    negative = (row.get("FGA", 0) - row.get("FGM", 0)) + (row.get("FTA", 0) - row.get("FTM", 0)) + row.get("TOV", 0)
-    return positive - negative
+@app.context_processor
+def inject_layout():
+    return {
+        "nav_links": NAV_LINKS,
+        "active_nav": NAV_PARENTS.get(request.endpoint, request.endpoint),
+        "current_year": datetime.now().year,
+    }
 
 @app.route("/")
 def home():
-    today = datetime.now().strftime("%m/%d/%Y")
-    games = []
-    try:
-        scoreboard = nbacall_retry(ScoreboardV2, game_date=today, timeout=30)
-        raw = scoreboard.get_normalized_dict()
-        games = raw.get("GameHeader", []) or []
-    except KeyError as e:
-        print(f"[WARN] ScoreboardV2 missing dataset: {e}. Showing empty games list.")
-    except Exception as e:
-        print(f"[ERROR] Could not fetch scoreboard: {e}. Showing empty games list.")
-
-    games_today = []
-    for g in games:
-        try:
-            games_today.append(
-                {
-                    "game_id": g.get("GAME_ID"),
-                    "matchup": f"{g.get('VISITOR_TEAM_ABBREVIATION')} @ {g.get('HOME_TEAM_ABBREVIATION')}",
-                    "game_time": g.get("GAME_TIME"),
-                    "arena": g.get("ARENA_NAME"),
-                }
-            )
-        except Exception:
-            continue
-
+    # Today's games load client-side from /api/games-today so the page never
+    # blocks on the NBA API.
     return render_template(
         "home.html",
-        games_today=games_today,
-        games_count=len(games_today),
         seasons=get_seasons(),
+        total_players=len(players.get_players()),
     )
+
+@app.route("/privacy_policy")
+def privacy_policy():
+    return render_template("privacy_policy.html")
+
+@app.route("/api/games-today")
+def api_games_today():
+    today = datetime.now().strftime("%m/%d/%Y")
+
+    def load():
+        raw = nbacall_retry(ScoreboardV2, game_date=today).get_normalized_dict()
+        # ScoreboardV2 lists only the home team's id; resolve abbreviations locally.
+        abbr = {int(t["id"]): t["abbreviation"] for t in teams.get_teams()}
+        return [
+            {
+                "game_id": g.get("GAME_ID"),
+                "matchup": f"{abbr.get(g.get('VISITOR_TEAM_ID'), '?')} @ {abbr.get(g.get('HOME_TEAM_ID'), '?')}",
+                "game_time": (g.get("GAME_STATUS_TEXT") or "").strip(),
+                "arena": g.get("ARENA_NAME"),
+            }
+            for g in (raw.get("GameHeader") or [])
+        ]
+
+    try:
+        games = cached(("games_today", today), TTL_SHORT, load)
+        return jsonify({"success": True, "games": games, "count": len(games)})
+    except Exception as e:
+        print(f"[ERROR] /api/games-today: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch today's games."}), 503
 
 @app.route("/players")
 def players_page():
@@ -207,59 +116,6 @@ def team_trends():
 @app.route("/compare")
 def compare_players():
     return render_template("compare.html", seasons=get_seasons())
-
-@app.route("/api/leaders")
-def get_homepage_leaders():
-    stat = request.args.get("stat", "Points")
-    season = request.args.get("season", get_seasons()[0])
-
-    stat_category_map = {
-        "PTS": "Points",
-        "REB": "Rebounds",
-        "AST": "Assists",
-        "STL": "Defense",
-        "BLK": "Defense",
-    }
-
-    try:
-        homepage = nbacall_retry(
-            HomePageLeaders,
-            game_scope_detailed="Season",
-            league_id="00",
-            player_or_team="Player",
-            player_scope="All Players",
-            season=season,
-            season_type_playoffs="Regular Season",
-            stat_category=stat_category_map.get(stat, "Points"),
-            timeout=30,
-        )
-        df = homepage.get_data_frames()[0]
-        return jsonify({"success": True, "data": df.to_dict(orient="records"), "count": len(df)})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route("/api/team-monthly")
-def api_team_monthly():
-    team_id = request.args.get("team_id")
-    season  = request.args.get("season", get_seasons()[0])
-    month   = int(request.args.get("month", "1"))
-
-    try:
-        tid = int(team_id)
-    except (TypeError, ValueError):
-        return jsonify({"success": True, "wins": 0, "losses": 0})
-
-    gl_df = get_team_gamelog_cached(tid, season, timeout_sec=30)
-
-    if gl_df is None or gl_df.empty:
-        return jsonify({"success": True, "wins": 0, "losses": 0})
-
-    gl_df = gl_df.copy()
-    gl_df["GAME_DATE"] = pd.to_datetime(gl_df["GAME_DATE"], errors="coerce")
-
-    wins = int(((gl_df["GAME_DATE"].dt.month == month) & (gl_df["WL"] == "W")).sum())
-    losses = int(((gl_df["GAME_DATE"].dt.month == month) & (gl_df["WL"] == "L")).sum())
-    return jsonify({"success": True, "wins": wins, "losses": losses})
 
 @app.route("/api/team-monthly-series")
 def api_team_monthly_series():
@@ -296,21 +152,7 @@ def api_team_stats(team_id):
     try:
         team_id_int = int(team_id)
 
-        def get_teamgamelog_df():
-            try:
-                tgl = nbacall_retry(
-                    TeamGameLog,
-                    team_id=team_id_int,
-                    season=season,
-                    season_type_all_star="Regular Season",
-                    timeout=30,
-                ).get_data_frames()[0]
-                return tgl if tgl is not None else pd.DataFrame()
-            except Exception as e:
-                print(f"[WARN] TeamGameLog failed: {e}")
-                return pd.DataFrame()
-
-        gl_df = get_teamgamelog_df()
+        gl_df = get_team_gamelog_cached(team_id_int, season, timeout_sec=30)
 
         if gl_df.empty:
             try:
@@ -343,8 +185,6 @@ def api_team_stats(team_id):
             home_l = int((gl_df[home_mask]["WL"] == "L").sum())
             road_w = int((gl_df[road_mask]["WL"] == "W").sum())
             road_l = int((gl_df[road_mask]["WL"] == "L").sum())
-        home_record_fallback = f"{home_w}-{home_l}"
-        road_record_fallback = f"{road_w}-{road_l}"
 
         ppg = rpg = apg = spg = bpg = 0.0
         fg_pct = fg3_pct = ft_pct = 0.0
@@ -352,14 +192,7 @@ def api_team_stats(team_id):
         sanity_ok = False
 
         try:
-            stats = nbacall_retry(
-                leaguedashteamstats.LeagueDashTeamStats,
-                season=season,
-                season_type_all_star="Regular Season",
-                per_mode_detailed="PerGame",
-                league_id_nullable="00",
-            )
-            df = stats.get_data_frames()[0]
+            df = get_league_team_stats(season)
             row_df = df[df["TEAM_ID"] == team_id_int]
             if not row_df.empty:
                 row = row_df.iloc[0]
@@ -391,12 +224,7 @@ def api_team_stats(team_id):
 
         off_rating = def_rating = net_rating = pace = 0.0
         try:
-            em_df = nbacall_retry(
-                teamestimatedmetrics.TeamEstimatedMetrics,
-                season=season,
-                season_type="Regular Season",
-                timeout=30,
-            ).get_data_frames()[0]
+            em_df = get_team_estimated_metrics(season)
             em_row = em_df[em_df["TEAM_ID"] == team_id_int]
             if not em_row.empty:
                 em = em_row.iloc[0]
@@ -463,8 +291,11 @@ def api_roster_analysis(team_id):
     season = request.args.get("season", get_seasons()[0])
 
     try:
-        dash = nbacall_retry(TeamPlayerDashboard, team_id=team_id, season=season, timeout=30)
-        dfs = dash.get_data_frames()
+        dfs = cached(
+            ("team_player_dashboard", str(team_id), season),
+            TTL_DEFAULT,
+            lambda: nbacall_retry(TeamPlayerDashboard, team_id=team_id, season=season).get_data_frames(),
+        )
         stats = dfs[1] if len(dfs) > 1 else pd.DataFrame()
         if stats is None or stats.empty:
             return jsonify(
@@ -508,116 +339,6 @@ def api_roster_analysis(team_id):
         print(f"[ERROR] /api/roster-analysis/{team_id}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route("/api/team_trends_data")
-def team_trends_data():
-    team_id = request.args.get("team_id")
-    season = request.args.get("season", get_seasons()[0])
-
-    try:
-        general = nbacall_retry(
-            TeamDashboardByGeneralSplits,
-            team_id=team_id,
-            season=season,
-            season_type_all_star="Regular Season",
-            league_id="00",
-            timeout=30,
-        ).get_normalized_dict()
-        overall_stats = (general.get("OverallTeamDashboard") or [{}])[0] if general else {}
-
-        _shooting = nbacall_retry(
-            TeamDashboardByShootingSplits,
-            team_id=team_id,
-            season=season,
-            season_type_all_star="Regular Season",
-            league_id="00",
-            timeout=30,
-        ).get_normalized_dict()
-
-        gl_df = nbacall_retry(
-            TeamGameLog,
-            team_id=team_id,
-            season=season,
-            season_type_all_star="Regular Season",
-            timeout=30,
-        ).get_data_frames()[0]
-        if gl_df is None or gl_df.empty:
-            monthly_avg = {m: 0 for m in ["October", "November", "December", "January", "February", "March", "April"]}
-            home_avg_pts = away_avg_pts = 0.0
-            east_avg = west_avg = 0.0
-        else:
-            gl_df = gl_df.copy()
-            gl_df["GAME_DATE"] = pd.to_datetime(gl_df["GAME_DATE"])
-            gl_df["MONTH"] = gl_df["GAME_DATE"].dt.month_name()
-
-            month_order = ["October", "November", "December", "January", "February", "March", "April"]
-            monthly_avg = (
-                gl_df.groupby("MONTH")["PTS"].mean().reindex(month_order).fillna(0).round(1).to_dict()
-            )
-
-            home_games = gl_df[gl_df["MATCHUP"].str.contains("vs", na=False)]
-            away_games = gl_df[gl_df["MATCHUP"].str.contains("@", na=False)]
-            home_avg_pts = round(home_games["PTS"].mean(), 1) if not home_games.empty else 0.0
-            away_avg_pts = round(away_games["PTS"].mean(), 1) if not away_games.empty else 0.0
-
-            east = {"ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DET", "IND", "MIA", "MIL", "NYK", "ORL", "PHI", "TOR", "WAS"}
-            gl_df["OPP_ABBR"] = gl_df["MATCHUP"].str.extract(r"([A-Z]{3})$")[0]
-            gl_df["OPP_CONF"] = gl_df["OPP_ABBR"].apply(lambda x: "East" if x in east else "West")
-            conf_avg_map = gl_df.groupby("OPP_CONF")["PTS"].mean().round(1).to_dict()
-            east_avg = float(conf_avg_map.get("East", 0.0))
-            west_avg = float(conf_avg_map.get("West", 0.0))
-
-        try:
-            pdash = nbacall_retry(TeamPlayerDashboard, team_id=team_id, season=season, timeout=30).get_normalized_dict()
-            roster_list = sorted(pdash.get("TeamPlayerDashboard", []), key=lambda x: x.get("GP", 0), reverse=True)[:5]
-        except Exception:
-            roster_list = []
-
-        payload = {
-            "basic": {
-                "wins": overall_stats.get("W", 0),
-                "losses": overall_stats.get("L", 0),
-                "ppg": round(float(overall_stats.get("PTS", 0.0)), 1),
-                "apg": round(float(overall_stats.get("AST", 0.0)), 1),
-                "rpg": round(float(overall_stats.get("REB", 0.0)), 1),
-                "spg": round(float(overall_stats.get("STL", 0.0)), 1),
-                "bpg": round(float(overall_stats.get("BLK", 0.0)), 1),
-                "opp_ppg": round(float(overall_stats.get("OPP_PTS", 0.0)), 1),
-            },
-            "efficiency": {
-                "off_rating": round(float(overall_stats.get("OFF_RATING", 0.0)), 1),
-                "def_rating": round(float(overall_stats.get("DEF_RATING", 0.0)), 1),
-                "net_rating": round(float(overall_stats.get("NET_RATING", 0.0)), 1),
-                "pace": round(float(overall_stats.get("PACE", 0.0)), 1),
-            },
-            "rankings": {
-                "pts_rank": overall_stats.get("PTS_RANK", None),
-                "reb_rank": overall_stats.get("REB_RANK", None),
-                "ast_rank": overall_stats.get("AST_RANK", None),
-                "opp_pts_rank": overall_stats.get("OPP_PTS_RANK", None),
-            },
-            "trends": {
-                "monthly": monthly_avg,
-                "home_avg": home_avg_pts,
-                "away_avg": away_avg_pts,
-                "east_avg": east_avg,
-                "west_avg": west_avg,
-            },
-            "roster": [
-                {
-                    "player": p.get("PLAYER_NAME", "N/A"),
-                    "ppg": round(float(p.get("PTS", 0.0)), 1),
-                    "rpg": round(float(p.get("REB", 0.0)), 1),
-                    "apg": round(float(p.get("AST", 0.0)), 1),
-                }
-                for p in roster_list
-            ],
-        }
-        return jsonify(payload)
-
-    except Exception as e:
-        print(f"[ERROR] /api/team_trends_data: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
 @app.route("/api/players")
 def get_players():
     try:
@@ -627,62 +348,32 @@ def get_players():
         sort_by = request.args.get("sort_by", "PTS")
         search = request.args.get("search", "").lower()
 
-        time.sleep(0.25)
-        stats = nbacall_retry(
-            leaguedashplayerstats.LeagueDashPlayerStats,
-            season=season,
-            season_type_all_star="Regular Season",
-        )
-        df = stats.get_data_frames()[0]
+        # Compute everything on the full league table first, then filter, so that
+        # league-relative metrics don't change with the search/team/position filter.
+        df = get_league_player_stats(season).copy()
 
-        if search:
-            df = df[df["PLAYER_NAME"].str.lower().str.contains(search)]
-        if team_code != "all":
-            df = df[df["TEAM_ABBREVIATION"] == team_code]
-        if position_filter != "all" and "POSITION" in df.columns:
-            df = df[df["POSITION"].str.contains(position_filter, na=False)]
+        # Official NBA advanced metrics (fractions, e.g. 0.312) replace local estimates.
+        adv_cols = ["USG_PCT", "AST_PCT", "REB_PCT", "PIE"]
+        adv = get_league_player_stats(season, "Advanced")
+        df = df.merge(adv[["PLAYER_ID"] + adv_cols], on="PLAYER_ID", how="left")
+        df[adv_cols] = df[adv_cols].fillna(0) * 100
 
-        df = df.copy()
+        try:
+            positions = get_player_positions()
+        except Exception as e:
+            print(f"[WARN] PlayerIndex positions unavailable: {e}")
+            positions = {}
+        df["POSITION"] = df["PLAYER_ID"].map(lambda pid: positions.get(int(pid), ""))
+
         df["TS_PCT"] = df.apply(lambda r: calculate_true_shooting(r), axis=1)
         df["EFF"] = df.apply(lambda r: calculate_efficiency(r) / (r["GP"] or 1), axis=1)
 
-        tot_mp = df["MIN"].sum()
-        tot_fga = df["FGA"].sum()
-        tot_fta = df["FTA"].sum()
-        tot_tov = df["TOV"].sum()
-        tot_fgm = df["FGM"].sum()
-        tot_reb = df["REB"].sum()
-
-        df["USG_PCT"] = (
-            100
-            * ((df["FGA"] + 0.44 * df["FTA"] + df["TOV"]) * (tot_mp / 5))
-            / (df["MIN"] * (tot_fga + 0.44 * tot_fta + tot_tov))
-        ).fillna(0)
-
-        df["AST_PCT"] = (
-            100
-            * df["AST"]
-            / ((((df["MIN"] / (tot_mp / 5)) * tot_fgm) - df["FGM"]).replace(0, pd.NA))
-        ).fillna(0)
-
-        df["REB_PCT"] = (100 * (df["REB"] * (tot_mp / 5)) / (df["MIN"] * (tot_reb + tot_reb))).fillna(0)
-
-        num = (
-            df["PTS"]
-            + df["FGM"]
-            + df["FTM"]
-            - df["FGA"]
-            - df["FTA"]
-            + df["DREB"]
-            + 0.5 * df["OREB"]
-            + df["AST"]
-            + df["STL"]
-            + 0.5 * df["BLK"]
-            - df["PF"]
-            - df["TOV"]
-        )
-        total_num = num.sum() if num.sum() != 0 else 1
-        df["PIE"] = (num / total_num * 100).fillna(0)
+        if search:
+            df = df[df["PLAYER_NAME"].str.lower().str.contains(search, regex=False)]
+        if team_code != "all":
+            df = df[df["TEAM_ABBREVIATION"] == team_code]
+        if position_filter != "all":
+            df = df[df["POSITION"].str.contains(position_filter, regex=False, na=False)]
 
         display_columns = [
             "PLAYER_ID",
@@ -743,7 +434,6 @@ def get_players():
                 "success": True,
                 "data": players_data,
                 "count": len(players_data),
-                "meta": {"estimated_fields": ["USG_PCT", "AST_PCT", "REB_PCT", "PIE"]},
             }
         )
 
@@ -780,13 +470,19 @@ def get_player_detail(player_id: int):
             pass
 
         # 1) Player bio
-        cpi = nbacall_retry(commonplayerinfo.CommonPlayerInfo, player_id=player_id, timeout=30)
-        info_df = cpi.get_data_frames()[0]
+        info_df = cached(
+            ("player_info", player_id),
+            TTL_DEFAULT,
+            lambda: nbacall_retry(commonplayerinfo.CommonPlayerInfo, player_id=player_id).get_data_frames()[0],
+        )
         info = info_df.to_dict("records")[0] if len(info_df) > 0 else {}
 
         # 2) Player profile (regular season tables)
-        prof = nbacall_retry(playerprofilev2.PlayerProfileV2, player_id=player_id, timeout=30)
-        norm = prof.get_normalized_dict()
+        norm = cached(
+            ("player_profile", player_id),
+            TTL_DEFAULT,
+            lambda: nbacall_retry(playerprofilev2.PlayerProfileV2, player_id=player_id).get_normalized_dict(),
+        )
 
         seasons_regular = norm.get("SeasonTotalsRegularSeason", []) or []
         career_regular  = norm.get("CareerTotalsRegularSeason", []) or []
@@ -813,7 +509,6 @@ def get_player_detail(player_id: int):
             r["APG"] = float(r.get("AST") or 0.0) / gp
             r["SPG"] = float(r.get("STL") or 0.0) / gp
             r["BPG"] = float(r.get("BLK") or 0.0) / gp
-            r["TOV"] = float(r.get("TOV") or 0.0) / gp
 
             # Totals (rename for clarity)
             r["MIN_TOTAL"] = min_tot
@@ -850,6 +545,8 @@ def get_player_detail(player_id: int):
             for k in ("PTS","REB","AST","STL","BLK","TOV","OREB","DREB","FG3M","FTA","FGA"):
                 val = float(r.get(k) or 0.0) / gp
                 r[f"{k}_P36"] = val * scale if scale else 0.0
+            # Per-game TOV, set last so the totals and per-36 above use the season total
+            r["TOV"] = r["TOV_TOTAL"] / gp
 
             # Ensure per‑season team name/abbr come from the season row (not current team)
             team_id = r.get("TEAM_ID")
@@ -884,7 +581,45 @@ def get_player_detail(player_id: int):
 
     except Exception as e:
         print(f"[ERROR] /api/player/{player_id}: {e}")
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/shot-chart/<int:player_id>")
+def api_shot_chart(player_id: int):
+    season = request.args.get("season", get_seasons()[0])
+
+    def load():
+        return nbacall_retry(
+            shotchartdetail.ShotChartDetail,
+            team_id=0,
+            player_id=player_id,
+            season_nullable=season,
+            season_type_all_star="Regular Season",
+            context_measure_simple="FGA",  # the default ("PTS") returns made shots only
+        ).get_data_frames()[0]
+
+    try:
+        df = cached(("shot_chart", player_id, season), TTL_DEFAULT, load)
+    except Exception as e:
+        print(f"[ERROR] /api/shot-chart/{player_id}: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch shot data from NBA API."}), 503
+
+    if df is None or df.empty:
+        return jsonify({"success": False, "error": "No shot data for this player/season."}), 404
+
+    columns = [
+        "LOC_X",
+        "LOC_Y",
+        "SHOT_MADE_FLAG",
+        "PERIOD",
+        "SHOT_TYPE",
+        "SHOT_DISTANCE",
+        "SHOT_ZONE_BASIC",
+        "SHOT_ZONE_AREA",
+        "ACTION_TYPE",
+        "GAME_DATE",
+    ]
+    shots = df[[c for c in columns if c in df.columns]].to_dict("records")
+    return jsonify({"success": True, "shots": shots, "count": len(shots)})
 
 @app.route("/player/<int:player_id>")
 def player_detail(player_id: int):
@@ -897,13 +632,7 @@ def export_players():
         team_code = request.args.get("team", "all")
         sort_by = request.args.get("sort_by", "PTS")
 
-        player_stats = nbacall_retry(
-            leaguedashplayerstats.LeagueDashPlayerStats,
-            season=season,
-            season_type_all_star="Regular Season",
-            timeout=30,
-        )
-        df = player_stats.get_data_frames()[0]
+        df = get_league_player_stats(season)
         if team_code != "all":
             df = df[df["TEAM_ABBREVIATION"] == team_code]
         if sort_by in df.columns:
@@ -938,25 +667,9 @@ def search_players():
         return jsonify({"success": True, "players": matching})
     except Exception as e:
         print(f"Error in /api/search-players: {e}")
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route("/test-api")
-def test_api():
-    try:
-        all_teams = teams.get_teams()
-        all_players = players.get_players()
-        return jsonify(
-            {
-                "success": True,
-                "teams_count": len(all_teams),
-                "players_count": len(all_players),
-                "sample_team": all_teams[0] if all_teams else None,
-                "sample_player": all_players[0] if all_players else None,
-            }
-        )
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
-    app.run(debug=True, port=port)
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1", port=port)

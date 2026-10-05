@@ -1,24 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Metrics</title>
+{% extends "base.html" %}
+
+{% block title %}Advanced Metrics{% endblock %}
+
+{% block head %}
     <link rel="stylesheet" href="/static/css/advanced_metrics.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="logo">Court Vision 🏀</div>
-            <nav>
-                <a href="/">Home</a>
-                <a href="/players">Players</a>
-                <a href="/team-trends">Teams</a>
-                <a href="/shot-charts">Shot Charts</a>
-                <a href="/compare">Compare</a>
-                <a href="/advanced-metrics" class="active">Adv. Metrics</a>
-            </nav>
-        </header>
+{% endblock %}
+
+{% block content %}
 
         <section class="metrics-header">
             <h2>Advanced NBA Metrics Dashboard</h2>
@@ -86,12 +74,9 @@
             <div class="loading-spinner"></div>
             <p>Calculating advanced metrics...</p>
         </div>
+{% endblock %}
 
-        <footer>
-            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
-        </footer>
-    </div>
-
+{% block scripts %}
     <script>
         const metricDescriptions = {
             'TS_PCT': {
@@ -152,7 +137,11 @@
                 currentMetric = this.value;
                 updateMetricExplanation();
                 if (playersData.length > 0) {
+                    sortByCurrentMetric();
+                    document.querySelectorAll('.viz-tab').forEach(t =>
+                        t.classList.toggle('active', t.dataset.view === 'leaders'));
                     displayVisualization('leaders');
+                    generateInsights();
                 }
             });
 
@@ -188,20 +177,28 @@
 
                 if (data.success) {
                     // Filter by minimum games
-                    playersData = data.data.filter(p => p.GP >= minGames);
+                    playersData = data.data.filter(p => p.GP >= Number(minGames));
 
-                    // Show sections
                     document.getElementById('metrics-visualization').style.display = 'block';
-                    document.getElementById('metrics-insights').style.display = 'block';
+                    if (!playersData.length) {
+                        showMessage(data.data.length
+                            ? `No players with at least ${minGames} games in ${season}. Try a lower minimum.`
+                            : `No regular-season stats for ${season} yet.`);
+                        return;
+                    }
 
-                    // Display default view
+                    sortByCurrentMetric();
+                    document.getElementById('metrics-insights').style.display = 'block';
                     displayVisualization('leaders');
                     generateInsights();
                 } else {
-                    alert('Failed to load metrics data');
+                    document.getElementById('metrics-visualization').style.display = 'block';
+                    showMessage(data.error || 'Failed to load metrics data.');
                 }
             } catch (error) {
-                alert('Error loading metrics');
+                console.error(error);
+                document.getElementById('metrics-visualization').style.display = 'block';
+                showMessage('Error loading metrics. Please try again.');
             } finally {
                 showLoading(false);
             }
@@ -299,11 +296,12 @@
         function displayPositionComparison() {
             const content = document.getElementById('viz-content');
 
-            // Group by position
+            // Group by primary position ("G-F" counts as a guard)
             const positions = { 'G': [], 'F': [], 'C': [] };
             playersData.forEach(player => {
-                if (positions[player.POSITION]) {
-                    positions[player.POSITION].push(player[currentMetric]);
+                const primary = (player.POSITION || '').charAt(0);
+                if (positions[primary]) {
+                    positions[primary].push(player[currentMetric]);
                 }
             });
 
@@ -369,7 +367,18 @@
             return value.toFixed(1);
         }
 
-        function showLoading(show) {
+        function sortByCurrentMetric() {
+            playersData.sort((a, b) => (b[currentMetric] || 0) - (a[currentMetric] || 0));
+        }
+
+        function showMessage(text) {
+            const p = document.createElement('p');
+            p.className = 'no-data';
+            p.textContent = text;
+            document.getElementById('viz-content').replaceChildren(p);
+        }
+
+                function showLoading(show) {
             document.getElementById('loading').style.display = show ? 'flex' : 'none';
         }
 
@@ -378,5 +387,4 @@
             document.getElementById('metrics-insights').style.display = 'none';
         }
     </script>
-</body>
-</html>
+{% endblock %}

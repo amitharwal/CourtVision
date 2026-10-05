@@ -1,24 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compare Players</title>
+{% extends "base.html" %}
+
+{% block title %}Compare Players{% endblock %}
+
+{% block head %}
     <link rel="stylesheet" href="/static/css/compare.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="logo">Court Vision 🏀</div>
-            <nav>
-                <a href="/">Home</a>
-                <a href="/players">Players</a>
-                <a href="/team-trends">Teams</a>
-                <a href="/shot-charts">Shot Charts</a>
-                <a href="/compare" class="active">Compare</a>
-                <a href="/advanced-metrics">Adv. Metrics</a>
-            </nav>
-        </header>
+{% endblock %}
+
+{% block content %}
 
         <section class="compare-header">
             <h2>Player Comparison Tool</h2>
@@ -50,12 +38,9 @@
                 <!-- Comparison data will appear here -->
             </div>
         </section>
+{% endblock %}
 
-        <footer>
-            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
-        </footer>
-    </div>
-
+{% block scripts %}
     <script>
   let selectedPlayers = [];
   let playerStats      = {};
@@ -103,11 +88,13 @@
       out.innerHTML = `<div class="no-results">No players found</div>`;
       return out.style.display = 'block';
     }
-    out.innerHTML = list.map(p => `
-      <div class="search-result" onclick='addPlayer(${p.id}, ${JSON.stringify(p.name)})'>
-        ${p.name} ${p.is_active ? '✓' : '(Retired)'}
-      </div>
-    `).join('');
+    out.replaceChildren(...list.map(p => {
+      const div = document.createElement('div');
+      div.className = 'search-result';
+      div.textContent = `${p.name} ${p.is_active ? '✓' : '(Retired)'}`;
+      div.addEventListener('click', () => addPlayer(p.id, p.name));
+      return div;
+    }));
     out.style.display = 'block';
   }
 
@@ -162,53 +149,40 @@
       );
 
       playerStats = {};
+      const missing = [];
       results.forEach((res, idx) => {
-        if (!res.success) throw new Error('API error');
-        // pick the career_totals record matching this season
-        const career = res.career_totals || [];
-        const rec    = career.find(x => x.SEASON_ID === season)
-                    || career[career.length-1]
-                    || {};
+        if (!res.success) throw new Error(res.error || 'API error');
+        // Season rows from /api/player; a traded player has one row per team
+        // plus a combined "TOT" row, which is the one to compare.
+        const rows = (res.seasons_regular || []).filter(r => r.SEASON_ID === season);
+        const rec = rows.find(r => r.TEAM_ABBREVIATION === 'TOT') || rows[0];
+        if (!rec) {
+          missing.push(selectedPlayers[idx].name);
+          return;
+        }
 
-        // compute per‑game and advanced stats
         const GP = rec.GP || 1;
-        const PTS  = rec.PTS  || 0;
-        const REB  = rec.REB  || 0;
-        const AST  = rec.AST  || 0;
-        const STL  = rec.STL  || 0;
-        const BLK  = rec.BLK  || 0;
-        const PF   = rec.PF   || 0;
-        const FGA  = rec.FGA  || 0;
-        const FGM  = rec.FGM  || 0;
-        const FTA  = rec.FTA  || 0;
-        const FTM  = rec.FTM  || 0;
-        const TOV  = rec.TOV  || 0;
-        const MIN  = rec.MIN  || 0;
-
-        // per‑game
-        rec.PPG   = PTS  / GP;
-        rec.RPG   = REB  / GP;
-        rec.APG   = AST  / GP;
-        rec.SPG   = STL  / GP;
-        rec.BPG   = BLK  / GP;
-        rec.PFPG  = PF   / GP;
-
-        // true shooting %
-        rec.TS_PCT = GP > 0
-          ? (PTS / (2 * (FGA + 0.44 * FTA))) * 100
-          : 0;
-
-        // efficiency per game
-        const positive = PTS + REB + AST + STL + BLK;
-        const negative = (FGA - FGM) + (FTA - FTM) + TOV;
-        rec.EFF   = (positive - negative) / GP;
-
-        // keep MIN as total
+        // PPG/RPG/APG/SPG/BPG and TS_PCT come precomputed from the API;
+        // PTS/FGA/etc. are season totals, TOV_TOTAL is the turnover total.
+        rec.PFPG = (rec.PF || 0) / GP;
+        const positive = (rec.PTS || 0) + (rec.REB || 0) + (rec.AST || 0) + (rec.STL || 0) + (rec.BLK || 0);
+        const negative = ((rec.FGA || 0) - (rec.FGM || 0)) + ((rec.FTA || 0) - (rec.FTM || 0)) + (rec.TOV_TOTAL || 0);
+        rec.EFF = (positive - negative) / GP;
 
         playerStats[selectedPlayers[idx].id] = rec;
       });
 
+      if (missing.length === selectedPlayers.length) {
+        content.innerHTML = `<div class="error">No ${season} regular-season stats for the selected players.</div>`;
+        return;
+      }
       displayComparison();
+      if (missing.length) {
+        const note = document.createElement('div');
+        note.className = 'comparison-note';
+        note.textContent = `No ${season} regular-season stats for: ${missing.join(', ')}`;
+        content.prepend(note);
+      }
     } catch (e) {
       console.error(e);
       document.getElementById('comparison-content').innerHTML =
@@ -233,7 +207,7 @@
       html += `
         <div class="player-header-cell">
           <div class="player-name">${p.name}</div>
-          <div class="player-team">${st.TEAM_ABBREVIATION||'N/A'}</div>
+          <div class="player-team">${st.TEAM_ABBREVIATION === 'TOT' ? 'Multiple teams' : (st.TEAM_ABBREVIATION || 'N/A')}</div>
         </div>`;
     });
     html += '</div>';
@@ -312,5 +286,4 @@
     };
   }
 </script>
-</body>
-</html>
+{% endblock %}

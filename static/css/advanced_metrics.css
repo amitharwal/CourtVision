@@ -559,3 +559,8 @@ footer a {
     grid-template-columns: 1fr;
   }
 }
+.no-data {
+  text-align: center;
+  padding: 40px 20px;
+  font-weight: bold;
+}
