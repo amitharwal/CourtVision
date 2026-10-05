@@ -108,11 +108,12 @@
         </section>
 
         <footer>
-            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+            © 2025 Court Vision. Built with raw code and real data. <a href="/privacy_policy">Privacy Policy</a>
         </footer>
     </div>
 
     <script>
+        const HOOP_Y = 52.5;  // hoop center is 5.25 ft from the baseline (1 unit = 0.1 ft)
         let selectedPlayer = null;
         let shotData = [];
         let searchTimeout;
@@ -166,11 +167,13 @@
                 return;
             }
 
-            resultsDiv.innerHTML = players.map(player => `
-                <div class="player-result" onclick="selectPlayer(${player.id}, '${player.name}')">
-                    ${player.name} ${player.is_active ? '' : '(Retired)'}
-                </div>
-            `).join('');
+            resultsDiv.replaceChildren(...players.map(player => {
+                const div = document.createElement('div');
+                div.className = 'player-result';
+                div.textContent = `${player.name} ${player.is_active ? '' : '(Retired)'}`;
+                div.addEventListener('click', () => selectPlayer(player.id, player.name));
+                return div;
+            }));
             resultsDiv.style.display = 'block';
         }
 
@@ -206,13 +209,10 @@
 
                 if (data.success) {
                     shotData = data.shots;
-                    console.log('All shots loaded:', shotData.length);
-                    console.log('Missed shots:', shotData.filter(s => Number(s.SHOT_MADE_FLAG) === 0).length);
-                    console.log('Made shots:', shotData.filter(s => Number(s.SHOT_MADE_FLAG) === 1).length);
                     displayShotChart();
                     document.getElementById('chart-container').style.display = 'block';
                 } else {
-                    alert('No shot data available for this player/season');
+                    alert(data.error || 'No shot data available for this player/season');
                 }
             } catch (error) {
                 alert('Failed to load shot chart');
@@ -227,11 +227,11 @@
                 <rect x="0" y="0" width="500" height="470" fill="#f4e4c1" stroke="#000" stroke-width="2"/>
                 <rect x="170" y="0" width="160" height="190" fill="none" stroke="#000" stroke-width="2"/>
                 <circle cx="250" cy="190" r="60" fill="none" stroke="#000" stroke-width="2"/>
-                <circle cx="250" cy="63" r="7.5" fill="#ff6600" stroke="#000" stroke-width="2"/>
+                <circle cx="250" cy="${HOOP_Y}" r="7.5" fill="#ff6600" stroke="#000" stroke-width="2"/>
                 <line x1="220" y1="40" x2="280" y2="40" stroke="#000" stroke-width="3"/>
                 <path d="M 30 0 L 30 140 A 237 237 0 0 0 470 140 L 470 0" fill="none" stroke="#000" stroke-width="2"/>
                 <circle cx="250" cy="470" r="60" fill="none" stroke="#000" stroke-width="2"/>
-                <path d="M 210 63 A 40 40 0 0 0 290 63" fill="none" stroke="#000" stroke-width="2"/>
+                <path d="M 210 ${HOOP_Y} A 40 40 0 0 0 290 ${HOOP_Y}" fill="none" stroke="#000" stroke-width="2"/>
             `;
         }
 
@@ -253,7 +253,8 @@
 
             const period = document.getElementById('period-select').value;
             if (period !== 'all') {
-                filtered = filtered.filter(s => s.PERIOD == period);
+                // "5" means any overtime period (5, 6, 7, ...)
+                filtered = filtered.filter(s => period === '5' ? s.PERIOD >= 5 : s.PERIOD == period);
             }
 
             return filtered;
@@ -275,16 +276,17 @@
             svg.querySelectorAll('.shot').forEach(el => el.remove());
 
             shots.forEach((shot, index) => {
-                if (shot.LOC_X == null || shot.LOC_Y == null || shot.LOC_Y > 470) {
-                    console.warn('Skipping shot with bad coordinates:', shot);
-                    return;
-                }
+                if (shot.LOC_X == null || shot.LOC_Y == null) return;
+
+                // LOC_X/LOC_Y are tenths of a foot relative to the hoop; the SVG
+                // origin is the baseline corner, so shift to the hoop's position.
+                const x = 250 + shot.LOC_X;
+                const y = HOOP_Y + shot.LOC_Y;
+                if (y > 470) return;  // beyond half court
 
                 const made = Number(shot.SHOT_MADE_FLAG) === 1;
 
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                const x = 250 + shot.LOC_X;  // LOC_X is centered at 0
-                const y = shot.LOC_Y;
                 circle.setAttribute('cx', x);
                 circle.setAttribute('cy', y);
                 circle.setAttribute('r', made ? 5 : 4);

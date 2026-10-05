@@ -88,7 +88,7 @@
         </div>
 
         <footer>
-            © 2025 Court Vision. Built with raw code and real data. <a href="#">Privacy Policy</a>
+            © 2025 Court Vision. Built with raw code and real data. <a href="/privacy_policy">Privacy Policy</a>
         </footer>
     </div>
 
@@ -299,11 +299,12 @@
         function displayPositionComparison() {
             const content = document.getElementById('viz-content');
 
-            // Group by position
+            // Group by primary position ("G-F" counts as a guard)
             const positions = { 'G': [], 'F': [], 'C': [] };
             playersData.forEach(player => {
-                if (positions[player.POSITION]) {
-                    positions[player.POSITION].push(player[currentMetric]);
+                const primary = (player.POSITION || '').charAt(0);
+                if (positions[primary]) {
+                    positions[primary].push(player[currentMetric]);
                 }
             });
 

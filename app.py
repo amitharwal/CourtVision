@@ -26,7 +26,8 @@ from nba_api.stats.endpoints import (
     leaguedashteamstats,
     teamestimatedmetrics,
     LeagueGameLog,
-    PlayerGameLog
+    PlayerGameLog,
+    playerindex,
 )
 from nba_api.stats.static import teams, players
 
@@ -36,47 +37,59 @@ from nba_api.stats.static import teams, players
 app = Flask(__name__)
 
 # ------------------------------------------------------------------------------
-# Constants: headers/proxy/timeout
+# Constants: proxy/timeout
 # ------------------------------------------------------------------------------
-HEADERS = {
-    "Host": "stats.nba.com",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:72.0) Gecko/20100101 Firefox/72.0",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "x-nba-stats-origin": "stats",
-    "x-nba-stats-token": "true",
-    "Connection": "keep-alive",
-    "Referer": "https://stats.nba.com/",
-    "Pragma": "no-cache",
-    "Cache-Control": "no-cache",
-}
-
+# No custom headers: stats.nba.com stalls requests carrying the old hand-rolled
+# browser headers, while nba_api's built-in defaults are accepted.
 PROXIES = {
     # "http": "http://your-proxy:port",
     # "https": "http://your-proxy:port",
 }
 
-DEFAULT_TIMEOUT = 60
+DEFAULT_TIMEOUT = 30
 
-_TGL_CACHE = {}
-_TGL_LOCK = threading.Lock()
-_TGL_TTL_SECONDS = 1800  # 30 minutes
+# First season covered by the league dashboard, advanced stats and shot chart endpoints.
+FIRST_STATS_SEASON_YEAR = 1996
+
+# ------------------------------------------------------------------------------
+# In-memory TTL cache for NBA API responses
+# ------------------------------------------------------------------------------
+_CACHE = {}
+_CACHE_LOCK = threading.Lock()
+
+TTL_SHORT = 120          # 2 minutes (live scoreboard)
+TTL_DEFAULT = 1800       # 30 minutes (season stats)
+TTL_LONG = 24 * 3600     # 1 day (player index / positions)
+
+def cached(key, ttl: int, loader):
+    """
+    Return loader() cached under key for ttl seconds.
+    If loader fails and a stale copy exists, serve the stale copy instead.
+    Cached DataFrames are shared: callers must .copy() before mutating them.
+    """
+    now = _now()
+    with _CACHE_LOCK:
+        entry = _CACHE.get(key)
+    if entry and now - entry["ts"] < ttl:
+        return entry["value"]
+
+    try:
+        value = loader()
+    except Exception as e:
+        if entry:
+            print(f"[WARN] serving stale cache for {key} due to: {e}")
+            return entry["value"]
+        raise
+
+    with _CACHE_LOCK:
+        _CACHE[key] = {"ts": now, "value": value}
+    return value
 
 def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
     """
-    Fetch TeamGameLog with a small timeout, cache for 30min.
-    Falls back to cached copy immediately if NBA API call fails or times out.
+    Fetch TeamGameLog, cached for 30min. Returns an empty DataFrame on failure.
     """
-    key = (int(team_id), season)
-    now = _now()
-
-    with _TGL_LOCK:
-        entry = _TGL_CACHE.get(key)
-        if entry and now - entry["ts"] < _TGL_TTL_SECONDS:
-            return entry["df"]
-
-    try:
+    def load():
         df = nbacall_retry(
             TeamGameLog,
             team_id=int(team_id),
@@ -84,20 +97,62 @@ def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
             season_type_all_star="Regular Season",
             timeout=timeout_sec,
         ).get_data_frames()[0]
-        if df is None:
-            df = pd.DataFrame()
-        with _TGL_LOCK:
-            _TGL_CACHE[key] = {"ts": now, "df": df}
-        return df
+        return df if df is not None else pd.DataFrame()
+
+    try:
+        return cached(("team_gamelog", int(team_id), season), TTL_DEFAULT, load)
     except Exception as e:
-        print(f"[WARN] get_team_gamelog_cached fallback due to: {e}")
-        with _TGL_LOCK:
-            entry = _TGL_CACHE.get(key)
-            if entry:
-                return entry["df"]
+        print(f"[WARN] get_team_gamelog_cached failed: {e}")
         return pd.DataFrame()
 
-def get_seasons(start_year: int = 1951):
+def get_league_player_stats(season: str, measure_type: str = "Base"):
+    """League-wide LeagueDashPlayerStats (season totals), cached for 30min."""
+    def load():
+        return nbacall_retry(
+            leaguedashplayerstats.LeagueDashPlayerStats,
+            season=season,
+            season_type_all_star="Regular Season",
+            measure_type_detailed_defense=measure_type,
+        ).get_data_frames()[0]
+
+    return cached(("league_player_stats", season, measure_type), TTL_DEFAULT, load)
+
+def get_league_team_stats(season: str):
+    """League-wide per-game LeagueDashTeamStats, cached for 30min."""
+    def load():
+        return nbacall_retry(
+            leaguedashteamstats.LeagueDashTeamStats,
+            season=season,
+            season_type_all_star="Regular Season",
+            per_mode_detailed="PerGame",
+            league_id_nullable="00",
+        ).get_data_frames()[0]
+
+    return cached(("league_team_stats", season), TTL_DEFAULT, load)
+
+def get_team_estimated_metrics(season: str):
+    """League-wide TeamEstimatedMetrics, cached for 30min."""
+    def load():
+        return nbacall_retry(
+            teamestimatedmetrics.TeamEstimatedMetrics,
+            season=season,
+            season_type="Regular Season",
+        ).get_data_frames()[0]
+
+    return cached(("team_estimated_metrics", season), TTL_DEFAULT, load)
+
+def get_player_positions():
+    """
+    Map PLAYER_ID -> position string ("G", "F-C", ...) from PlayerIndex.
+    LeagueDashPlayerStats has no position column, so positions are joined from here.
+    """
+    def load():
+        df = nbacall_retry(playerindex.PlayerIndex, historical_nullable="1").get_data_frames()[0]
+        return {int(r.PERSON_ID): (r.POSITION or "") for r in df.itertuples()}
+
+    return cached(("player_positions",), TTL_LONG, load)
+
+def get_seasons(start_year: int = FIRST_STATS_SEASON_YEAR):
     """
     Ordered newest -> oldest.
     NBA season spans two years. If it's October or later, treat the current calendar
@@ -115,10 +170,9 @@ def get_seasons(start_year: int = 1951):
 
 def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs):
     """
-    Wrapper for nba_api endpoint classes with consistent headers/timeout/proxy and
+    Wrapper for nba_api endpoint classes with consistent timeout/proxy and
     a simple retry with linear backoff.
     """
-    kwargs.setdefault("headers", HEADERS)
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
     if PROXIES:
         kwargs.setdefault("proxy", PROXIES)
@@ -152,37 +206,38 @@ def calculate_efficiency(row):
 
 @app.route("/")
 def home():
+    # Today's games load client-side from /api/games-today so the page never
+    # blocks on the NBA API.
+    return render_template("home.html", seasons=get_seasons())
+
+@app.route("/privacy_policy")
+def privacy_policy():
+    return render_template("privacy_policy.html")
+
+@app.route("/api/games-today")
+def api_games_today():
     today = datetime.now().strftime("%m/%d/%Y")
-    games = []
+
+    def load():
+        raw = nbacall_retry(ScoreboardV2, game_date=today).get_normalized_dict()
+        # ScoreboardV2 lists only the home team's id; resolve abbreviations locally.
+        abbr = {int(t["id"]): t["abbreviation"] for t in teams.get_teams()}
+        return [
+            {
+                "game_id": g.get("GAME_ID"),
+                "matchup": f"{abbr.get(g.get('VISITOR_TEAM_ID'), '?')} @ {abbr.get(g.get('HOME_TEAM_ID'), '?')}",
+                "game_time": (g.get("GAME_STATUS_TEXT") or "").strip(),
+                "arena": g.get("ARENA_NAME"),
+            }
+            for g in (raw.get("GameHeader") or [])
+        ]
+
     try:
-        scoreboard = nbacall_retry(ScoreboardV2, game_date=today, timeout=30)
-        raw = scoreboard.get_normalized_dict()
-        games = raw.get("GameHeader", []) or []
-    except KeyError as e:
-        print(f"[WARN] ScoreboardV2 missing dataset: {e}. Showing empty games list.")
+        games = cached(("games_today", today), TTL_SHORT, load)
+        return jsonify({"success": True, "games": games, "count": len(games)})
     except Exception as e:
-        print(f"[ERROR] Could not fetch scoreboard: {e}. Showing empty games list.")
-
-    games_today = []
-    for g in games:
-        try:
-            games_today.append(
-                {
-                    "game_id": g.get("GAME_ID"),
-                    "matchup": f"{g.get('VISITOR_TEAM_ABBREVIATION')} @ {g.get('HOME_TEAM_ABBREVIATION')}",
-                    "game_time": g.get("GAME_TIME"),
-                    "arena": g.get("ARENA_NAME"),
-                }
-            )
-        except Exception:
-            continue
-
-    return render_template(
-        "home.html",
-        games_today=games_today,
-        games_count=len(games_today),
-        seasons=get_seasons(),
-    )
+        print(f"[ERROR] /api/games-today: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch today's games."}), 503
 
 @app.route("/players")
 def players_page():
@@ -296,21 +351,7 @@ def api_team_stats(team_id):
     try:
         team_id_int = int(team_id)
 
-        def get_teamgamelog_df():
-            try:
-                tgl = nbacall_retry(
-                    TeamGameLog,
-                    team_id=team_id_int,
-                    season=season,
-                    season_type_all_star="Regular Season",
-                    timeout=30,
-                ).get_data_frames()[0]
-                return tgl if tgl is not None else pd.DataFrame()
-            except Exception as e:
-                print(f"[WARN] TeamGameLog failed: {e}")
-                return pd.DataFrame()
-
-        gl_df = get_teamgamelog_df()
+        gl_df = get_team_gamelog_cached(team_id_int, season, timeout_sec=30)
 
         if gl_df.empty:
             try:
@@ -352,14 +393,7 @@ def api_team_stats(team_id):
         sanity_ok = False
 
         try:
-            stats = nbacall_retry(
-                leaguedashteamstats.LeagueDashTeamStats,
-                season=season,
-                season_type_all_star="Regular Season",
-                per_mode_detailed="PerGame",
-                league_id_nullable="00",
-            )
-            df = stats.get_data_frames()[0]
+            df = get_league_team_stats(season)
             row_df = df[df["TEAM_ID"] == team_id_int]
             if not row_df.empty:
                 row = row_df.iloc[0]
@@ -391,12 +425,7 @@ def api_team_stats(team_id):
 
         off_rating = def_rating = net_rating = pace = 0.0
         try:
-            em_df = nbacall_retry(
-                teamestimatedmetrics.TeamEstimatedMetrics,
-                season=season,
-                season_type="Regular Season",
-                timeout=30,
-            ).get_data_frames()[0]
+            em_df = get_team_estimated_metrics(season)
             em_row = em_df[em_df["TEAM_ID"] == team_id_int]
             if not em_row.empty:
                 em = em_row.iloc[0]
@@ -463,8 +492,11 @@ def api_roster_analysis(team_id):
     season = request.args.get("season", get_seasons()[0])
 
     try:
-        dash = nbacall_retry(TeamPlayerDashboard, team_id=team_id, season=season, timeout=30)
-        dfs = dash.get_data_frames()
+        dfs = cached(
+            ("team_player_dashboard", str(team_id), season),
+            TTL_DEFAULT,
+            lambda: nbacall_retry(TeamPlayerDashboard, team_id=team_id, season=season).get_data_frames(),
+        )
         stats = dfs[1] if len(dfs) > 1 else pd.DataFrame()
         if stats is None or stats.empty:
             return jsonify(
@@ -627,62 +659,32 @@ def get_players():
         sort_by = request.args.get("sort_by", "PTS")
         search = request.args.get("search", "").lower()
 
-        time.sleep(0.25)
-        stats = nbacall_retry(
-            leaguedashplayerstats.LeagueDashPlayerStats,
-            season=season,
-            season_type_all_star="Regular Season",
-        )
-        df = stats.get_data_frames()[0]
+        # Compute everything on the full league table first, then filter, so that
+        # league-relative metrics don't change with the search/team/position filter.
+        df = get_league_player_stats(season).copy()
 
-        if search:
-            df = df[df["PLAYER_NAME"].str.lower().str.contains(search)]
-        if team_code != "all":
-            df = df[df["TEAM_ABBREVIATION"] == team_code]
-        if position_filter != "all" and "POSITION" in df.columns:
-            df = df[df["POSITION"].str.contains(position_filter, na=False)]
+        # Official NBA advanced metrics (fractions, e.g. 0.312) replace local estimates.
+        adv_cols = ["USG_PCT", "AST_PCT", "REB_PCT", "PIE"]
+        adv = get_league_player_stats(season, "Advanced")
+        df = df.merge(adv[["PLAYER_ID"] + adv_cols], on="PLAYER_ID", how="left")
+        df[adv_cols] = df[adv_cols].fillna(0) * 100
 
-        df = df.copy()
+        try:
+            positions = get_player_positions()
+        except Exception as e:
+            print(f"[WARN] PlayerIndex positions unavailable: {e}")
+            positions = {}
+        df["POSITION"] = df["PLAYER_ID"].map(lambda pid: positions.get(int(pid), ""))
+
         df["TS_PCT"] = df.apply(lambda r: calculate_true_shooting(r), axis=1)
         df["EFF"] = df.apply(lambda r: calculate_efficiency(r) / (r["GP"] or 1), axis=1)
 
-        tot_mp = df["MIN"].sum()
-        tot_fga = df["FGA"].sum()
-        tot_fta = df["FTA"].sum()
-        tot_tov = df["TOV"].sum()
-        tot_fgm = df["FGM"].sum()
-        tot_reb = df["REB"].sum()
-
-        df["USG_PCT"] = (
-            100
-            * ((df["FGA"] + 0.44 * df["FTA"] + df["TOV"]) * (tot_mp / 5))
-            / (df["MIN"] * (tot_fga + 0.44 * tot_fta + tot_tov))
-        ).fillna(0)
-
-        df["AST_PCT"] = (
-            100
-            * df["AST"]
-            / ((((df["MIN"] / (tot_mp / 5)) * tot_fgm) - df["FGM"]).replace(0, pd.NA))
-        ).fillna(0)
-
-        df["REB_PCT"] = (100 * (df["REB"] * (tot_mp / 5)) / (df["MIN"] * (tot_reb + tot_reb))).fillna(0)
-
-        num = (
-            df["PTS"]
-            + df["FGM"]
-            + df["FTM"]
-            - df["FGA"]
-            - df["FTA"]
-            + df["DREB"]
-            + 0.5 * df["OREB"]
-            + df["AST"]
-            + df["STL"]
-            + 0.5 * df["BLK"]
-            - df["PF"]
-            - df["TOV"]
-        )
-        total_num = num.sum() if num.sum() != 0 else 1
-        df["PIE"] = (num / total_num * 100).fillna(0)
+        if search:
+            df = df[df["PLAYER_NAME"].str.lower().str.contains(search, regex=False)]
+        if team_code != "all":
+            df = df[df["TEAM_ABBREVIATION"] == team_code]
+        if position_filter != "all":
+            df = df[df["POSITION"].str.contains(position_filter, regex=False, na=False)]
 
         display_columns = [
             "PLAYER_ID",
@@ -743,7 +745,6 @@ def get_players():
                 "success": True,
                 "data": players_data,
                 "count": len(players_data),
-                "meta": {"estimated_fields": ["USG_PCT", "AST_PCT", "REB_PCT", "PIE"]},
             }
         )
 
@@ -780,13 +781,19 @@ def get_player_detail(player_id: int):
             pass
 
         # 1) Player bio
-        cpi = nbacall_retry(commonplayerinfo.CommonPlayerInfo, player_id=player_id, timeout=30)
-        info_df = cpi.get_data_frames()[0]
+        info_df = cached(
+            ("player_info", player_id),
+            TTL_DEFAULT,
+            lambda: nbacall_retry(commonplayerinfo.CommonPlayerInfo, player_id=player_id).get_data_frames()[0],
+        )
         info = info_df.to_dict("records")[0] if len(info_df) > 0 else {}
 
         # 2) Player profile (regular season tables)
-        prof = nbacall_retry(playerprofilev2.PlayerProfileV2, player_id=player_id, timeout=30)
-        norm = prof.get_normalized_dict()
+        norm = cached(
+            ("player_profile", player_id),
+            TTL_DEFAULT,
+            lambda: nbacall_retry(playerprofilev2.PlayerProfileV2, player_id=player_id).get_normalized_dict(),
+        )
 
         seasons_regular = norm.get("SeasonTotalsRegularSeason", []) or []
         career_regular  = norm.get("CareerTotalsRegularSeason", []) or []
@@ -884,7 +891,45 @@ def get_player_detail(player_id: int):
 
     except Exception as e:
         print(f"[ERROR] /api/player/{player_id}: {e}")
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/shot-chart/<int:player_id>")
+def api_shot_chart(player_id: int):
+    season = request.args.get("season", get_seasons()[0])
+
+    def load():
+        return nbacall_retry(
+            shotchartdetail.ShotChartDetail,
+            team_id=0,
+            player_id=player_id,
+            season_nullable=season,
+            season_type_all_star="Regular Season",
+            context_measure_simple="FGA",  # the default ("PTS") returns made shots only
+        ).get_data_frames()[0]
+
+    try:
+        df = cached(("shot_chart", player_id, season), TTL_DEFAULT, load)
+    except Exception as e:
+        print(f"[ERROR] /api/shot-chart/{player_id}: {e}")
+        return jsonify({"success": False, "error": "Unable to fetch shot data from NBA API."}), 503
+
+    if df is None or df.empty:
+        return jsonify({"success": False, "error": "No shot data for this player/season."}), 404
+
+    columns = [
+        "LOC_X",
+        "LOC_Y",
+        "SHOT_MADE_FLAG",
+        "PERIOD",
+        "SHOT_TYPE",
+        "SHOT_DISTANCE",
+        "SHOT_ZONE_BASIC",
+        "SHOT_ZONE_AREA",
+        "ACTION_TYPE",
+        "GAME_DATE",
+    ]
+    shots = df[[c for c in columns if c in df.columns]].to_dict("records")
+    return jsonify({"success": True, "shots": shots, "count": len(shots)})
 
 @app.route("/player/<int:player_id>")
 def player_detail(player_id: int):
@@ -897,13 +942,7 @@ def export_players():
         team_code = request.args.get("team", "all")
         sort_by = request.args.get("sort_by", "PTS")
 
-        player_stats = nbacall_retry(
-            leaguedashplayerstats.LeagueDashPlayerStats,
-            season=season,
-            season_type_all_star="Regular Season",
-            timeout=30,
-        )
-        df = player_stats.get_data_frames()[0]
+        df = get_league_player_stats(season)
         if team_code != "all":
             df = df[df["TEAM_ABBREVIATION"] == team_code]
         if sort_by in df.columns:
@@ -938,7 +977,7 @@ def search_players():
         return jsonify({"success": True, "players": matching})
     except Exception as e:
         print(f"Error in /api/search-players: {e}")
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/test-api")
 def test_api():

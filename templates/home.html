@@ -32,24 +32,14 @@
         <thead>
           <tr>
             <th>Matchup</th>
-            <th>Time</th>
+            <th>Time / Status</th>
             <th>Arena</th>
           </tr>
         </thead>
-        <tbody>
-          {% if games_today %}
-            {% for game in games_today %}
-              <tr>
-                <td class="matchup">{{ game.matchup }}</td>
-                <td>{{ game.game_time }}</td>
-                <td>{{ game.arena }}</td>
-              </tr>
-            {% endfor %}
-          {% else %}
-            <tr>
-              <td colspan="3">No games scheduled today.</td>
-            </tr>
-          {% endif %}
+        <tbody id="games-body">
+          <tr>
+            <td colspan="3">Loading today's games...</td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -71,7 +61,7 @@
         </div>
         <div class="stat-card">
           <h4>Games Today</h4>
-          <div class="stat-number">{{ games_count }}</div>
+          <div class="stat-number" id="games-count">…</div>
         </div>
       </div>
     </section>
@@ -171,8 +161,48 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     loadQuickStats();
-    document.getElementById('load-data').addEventListener('click', () => location.reload());
+    loadGamesToday();
+    document.getElementById('load-data').addEventListener('click', loadGamesToday);
   });
+
+  async function loadGamesToday() {
+    const body = document.getElementById('games-body');
+    const count = document.getElementById('games-count');
+    const cell = text => {
+      const td = document.createElement('td');
+      td.textContent = text ?? '';
+      return td;
+    };
+    const message = text => {
+      const tr = document.createElement('tr');
+      const td = cell(text);
+      td.colSpan = 3;
+      tr.appendChild(td);
+      body.replaceChildren(tr);
+    };
+
+    message("Loading today's games...");
+    try {
+      const r = await fetch('/api/games-today');
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error);
+      count.textContent = j.count;
+      if (!j.games.length) {
+        message('No games scheduled today.');
+        return;
+      }
+      body.replaceChildren(...j.games.map(g => {
+        const tr = document.createElement('tr');
+        const matchup = cell(g.matchup);
+        matchup.className = 'matchup';
+        tr.append(matchup, cell(g.game_time), cell(g.arena));
+        return tr;
+      }));
+    } catch {
+      count.textContent = '—';
+      message("Couldn't load today's games. Try again shortly.");
+    }
+  }
 
   async function loadQuickStats() {
     try {
