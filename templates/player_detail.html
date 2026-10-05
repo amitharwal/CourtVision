@@ -67,8 +67,8 @@
         </div>
         <p id="gamelog-status" class="loading">Select a season to see its game log.</p>
         <div id="gamelog-body" hidden>
-          <div class="gamelog-chart"><canvas id="gamelog-chart"></canvas></div>
-          <p class="gamelog-legend">Bars: each game (green = win, red = loss) • Line: 5-game rolling average</p>
+          <div class="chart-box"><canvas id="gamelog-chart" role="img" aria-label="Per-game values with a rolling average; the table below lists every game"></canvas></div>
+          <div id="gamelog-legend" class="chart-legend"></div>
           <div class="table-wrap gamelog-table"><table id="gamelog-table" class="data-table"></table></div>
         </div>
       </section>
@@ -368,37 +368,43 @@
     const labels = gameLog.map(g => `${g.GAME_DATE.slice(5)} ${g.MATCHUP.slice(-3)}`);
 
     if (gameLogChart) gameLogChart.destroy();
-    Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+    CourtCharts.applyDefaults();
+    const colors = CourtCharts.colors();
+    const avgLabel = `${ROLLING_WINDOW}-game average`;
+    CourtCharts.legend(document.getElementById('gamelog-legend'), [
+      { label: 'Win', color: colors.win, kind: 'bar' },
+      { label: 'Loss', color: colors.loss, kind: 'bar' },
+      { label: avgLabel, color: colors.ink, kind: 'line' },
+    ]);
     gameLogChart = new Chart(document.getElementById('gamelog-chart'), {
       data: {
         labels,
         datasets: [
           {
             type: 'line',
-            label: `${ROLLING_WINDOW}-game avg`,
+            label: avgLabel,
             data: rollingAverage(values, ROLLING_WINDOW),
-            borderColor: '#000000',
-            borderWidth: 2,
-            pointRadius: 0,
+            borderColor: colors.ink,
+            pointBackgroundColor: colors.ink,
             tension: 0.3,
+            order: 0,  // draw the average above the bars
           },
           {
             type: 'bar',
             label,
             data: values,
-            backgroundColor: gameLog.map(g => g.WL === 'W' ? 'rgba(76, 175, 80, 0.75)' : 'rgba(255, 94, 91, 0.75)'),
-            borderColor: '#000000',
-            borderWidth: 1,
+            backgroundColor: gameLog.map(g => g.WL === 'W' ? colors.win : colors.loss),
+            barPercentage: 0.85,
+            categoryPercentage: 1,
+            order: 1,
           },
         ],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { display: false },
           tooltip: {
+            itemSort: (a, b) => b.datasetIndex - a.datasetIndex,  // the game's value before the average
             callbacks: {
               title: items => {
                 const g = gameLog[items[0].dataIndex];
@@ -408,8 +414,8 @@
           },
         },
         scales: {
-          x: { ticks: { maxRotation: 60, autoSkip: true, maxTicksLimit: 20 }, grid: { display: false } },
-          y: { title: { display: true, text: label } },
+          x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { display: false } },
+          y: { beginAtZero: stat !== 'PLUS_MINUS', title: { display: true, text: label } },
         },
       },
     });

@@ -57,12 +57,13 @@
   margin-bottom: var(--space-4);
 }
 
-.bar-chart {
-  position: relative;
-  height: 320px;
-  padding: 20px;
-  border: 1px solid var(--primary);
-  background-color: var(--light-gray);
+.monthly-table {
+  margin-top: var(--space-4);
+}
+
+.monthly-table .row-label {
+  text-align: left;
+  font-weight: bold;
 }
 
 .roster-grid {
@@ -122,7 +123,4 @@ a.player-name:hover {
     grid-template-columns: 1fr;
   }
 
-  .bar-chart {
-    overflow-x: auto;
-  }
 }

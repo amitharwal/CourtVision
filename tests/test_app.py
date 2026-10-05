@@ -273,6 +273,21 @@ class HomeApiTest(unittest.TestCase):
         self.assertEqual(data["leaders"]["PTS"][0]["value"], 25.0)
 
 
+class TeamMonthlySeriesApiTest(unittest.TestCase):
+    def test_skips_months_without_games_and_returns_records(self):
+        log = pd.DataFrame([
+            {"GAME_DATE": "Oct 24, 2024", "WL": "W"},
+            {"GAME_DATE": "Oct 26, 2024", "WL": "L"},
+            {"GAME_DATE": "Dec 02, 2024", "WL": "W"},
+        ])
+        with mock.patch.object(app_module, "get_team_gamelog_cached", return_value=log):
+            data = app_module.app.test_client().get(
+                "/api/team-monthly-series?team_id=1&season=2024-25").get_json()
+        self.assertEqual(data["months"], ["Oct", "Dec"])
+        self.assertEqual(data["win_pct"], [50.0, 100.0])
+        self.assertEqual((data["wins"], data["losses"]), ([1, 1], [1, 0]))
+
+
 class StandingsApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()

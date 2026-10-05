@@ -3,6 +3,7 @@
 {% block title %}Advanced Metrics{% endblock %}
 
 {% block head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/static/css/advanced_metrics.css">
 {% endblock %}
 
@@ -296,52 +297,82 @@
             `;
         }
 
+        let distributionChart = null;
+
         function displayDistribution() {
             const content = document.getElementById('viz-content');
+            const metric = metricDescriptions[currentMetric];
             const values = playersData.map(p => p[currentMetric]);
+            const sorted = [...values].sort((a, b) => b - a);
             const min = Math.min(...values);
             const max = Math.max(...values);
-            const range = max - min;
             const buckets = 10;
-            const bucketSize = range / buckets;
+            const bucketSize = (max - min) / buckets || 1;  // all-equal values -> one bucket
+            const digits = max - min < 20 ? 1 : 0;
 
-            // Create histogram data
-            const histogram = Array(buckets).fill(0);
+            const counts = Array(buckets).fill(0);
             values.forEach(val => {
-                const bucket = Math.min(Math.floor((val - min) / bucketSize), buckets - 1);
-                histogram[bucket]++;
+                counts[Math.min(Math.floor((val - min) / bucketSize), buckets - 1)]++;
             });
-
-            const maxCount = Math.max(...histogram);
+            const ranges = counts.map((_, i) =>
+                `${(min + i * bucketSize).toFixed(digits)}–${(min + (i + 1) * bucketSize).toFixed(digits)}`);
 
             content.innerHTML = `
                 <div class="distribution-chart">
-                    <h4>Player Distribution by ${metricDescriptions[currentMetric].name}</h4>
-                    <div class="histogram">
-                        ${histogram.map((count, i) => `
-                            <div class="hist-bar-container">
-                                <div class="hist-count">${count}</div>
-                                <div class="hist-bar" style="height: ${(count / maxCount) * 200}px"></div>
-                                <div class="hist-label">${(min + i * bucketSize).toFixed(0)}-${(min + (i + 1) * bucketSize).toFixed(0)}</div>
-                            </div>
-                        `).join('')}
-                    </div>
+                    <h4>Player distribution by ${metric.name}</h4>
+                    <div class="chart-box"><canvas id="distribution-chart" role="img" aria-label="Histogram of players by ${metric.name}"></canvas></div>
                     <div class="card distribution-stats">
                         <div class="dist-stat">
-                            <span>Average:</span>
+                            <span>Average</span>
                             <strong>${(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)}</strong>
                         </div>
                         <div class="dist-stat">
-                            <span>Top 10%:</span>
-                            <strong>≥ ${values.sort((a, b) => b - a)[Math.floor(values.length * 0.1)].toFixed(1)}</strong>
+                            <span>Top 10%</span>
+                            <strong>≥ ${sorted[Math.floor(sorted.length * 0.1)].toFixed(1)}</strong>
                         </div>
                         <div class="dist-stat">
-                            <span>Elite (Top 5%):</span>
-                            <strong>≥ ${values[Math.floor(values.length * 0.05)].toFixed(1)}</strong>
+                            <span>Top 5%</span>
+                            <strong>≥ ${sorted[Math.floor(sorted.length * 0.05)].toFixed(1)}</strong>
                         </div>
                     </div>
                 </div>
             `;
+
+            CourtCharts.applyDefaults();
+            if (distributionChart) distributionChart.destroy();
+            distributionChart = new Chart(document.getElementById('distribution-chart'), {
+                type: 'bar',
+                data: {
+                    labels: ranges,
+                    // Histogram bins are continuous: let bars fill their bin, separated only
+                    // by a 2px surface gap (1px surface border on each side).
+                    datasets: [{
+                        label: 'Players',
+                        data: counts,
+                        backgroundColor: CourtCharts.colors().accent,
+                        borderColor: CourtCharts.colors().surface,
+                        borderWidth: { left: 1, right: 1 },
+                        barPercentage: 1,
+                        categoryPercentage: 1,
+                        maxBarThickness: Infinity,
+                    }],
+                },
+                options: {
+                    plugins: {
+                        tooltip: {
+                            displayColors: false,
+                            callbacks: {
+                                title: items => `${metric.name}: ${items[0].label}`,
+                                label: item => `${item.parsed.y} player${item.parsed.y === 1 ? '' : 's'}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+                        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Players' } },
+                    },
+                },
+            });
         }
 
         function displayPositionComparison() {

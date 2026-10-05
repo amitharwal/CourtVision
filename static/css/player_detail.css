@@ -190,17 +190,6 @@
   padding: 6px 8px;
 }
 
-.gamelog-chart {
-  position: relative;
-  height: 300px;
-}
-
-.gamelog-legend {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  margin: var(--space-2) 0 var(--space-4);
-}
-
 .gamelog-table {
   max-height: 420px;
   overflow: auto;

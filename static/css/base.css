@@ -18,6 +18,8 @@
   --success-text: #2E7D32;    /* positive numbers */
   --danger-text: #C62828;     /* negative numbers */
   --warning: #FFC107;         /* play-in seeds */
+  --chart-win: #2E7D32;       /* game wins (validated vs --chart-loss for CVD) */
+  --chart-loss: #ABABAB;      /* game losses, deliberately recessive */
 
   /* Type */
   /* Space Mono for brand moments (logo, titles, nav, buttons, big numbers);
@@ -547,4 +549,37 @@ input:focus {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---------------------------------------------------------------- Charts */
+.chart-box {
+  position: relative;
+  height: 300px;          /* includes the x-axis band */
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.legend-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-key-bar {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legend-key-line {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
 }

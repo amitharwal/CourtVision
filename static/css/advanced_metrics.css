@@ -104,47 +104,8 @@
   text-align: center;
 }
 
-.histogram {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  height: 250px;
-  margin: 40px 0 var(--space-6);
-  padding: 0 20px;
-}
-
-.hist-bar-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  position: relative;
-  margin: 0 5px;
-}
-
-.hist-count {
-  position: absolute;
-  bottom: 100%;
-  margin-bottom: 5px;
-  font-weight: bold;
-  font-size: var(--fs-xs);
-}
-
-.hist-bar {
-  width: 100%;
-  background-color: var(--accent);
-  border: var(--border);
-}
-
-.hist-label {
-  font-size: 10px;
-  margin-top: 10px;
-  text-align: center;
-  color: var(--muted);
-}
-
 .distribution-stats {
+  margin-top: var(--space-5);
   display: flex;
   justify-content: space-around;
   gap: var(--space-4);
@@ -236,15 +197,6 @@
 @media (max-width: 768px) {
   .leaders-grid {
     grid-template-columns: 1fr;
-  }
-
-  .histogram {
-    overflow-x: auto;
-    padding: 0;
-  }
-
-  .hist-bar-container {
-    min-width: 40px;
   }
 
   .distribution-stats {

@@ -233,23 +233,28 @@ def api_team_monthly_series():
 
     df = get_team_gamelog_cached(team_id, season, timeout_sec=30)  # longer timeout
     if df is None or df.empty:
-        return jsonify({"success": True, "months": ["Oct","Nov","Dec","Jan","Feb","Mar","Apr"], "win_pct": [0]*7})
+        return jsonify({"success": True, "months": [], "win_pct": [], "wins": [], "losses": []})
 
     df = df.copy()
-    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
+    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], format="%b %d, %Y", errors="coerce")
     df["M"] = df["GAME_DATE"].dt.month
 
-    order = [(10,"Oct"),(11,"Nov"),(12,"Dec"),(1,"Jan"),(2,"Feb"),(3,"Mar"),(4,"Apr")]
-    labels, values = [], []
+    # Regular-season months in order; months without games are left out rather than
+    # reported as 0% (e.g. early in a season).
+    order = [(10, "Oct"), (11, "Nov"), (12, "Dec"), (1, "Jan"), (2, "Feb"), (3, "Mar"), (4, "Apr")]
+    labels, values, wins, losses = [], [], [], []
     for mnum, mlabel in order:
         sub = df[df["M"] == mnum]
-        w = int((sub["WL"] == "W").sum()) if not sub.empty else 0
-        l = int((sub["WL"] == "L").sum()) if not sub.empty else 0
-        total = w + l
+        w = int((sub["WL"] == "W").sum())
+        l = int((sub["WL"] == "L").sum())
+        if w + l == 0:
+            continue
         labels.append(mlabel)
-        values.append(round((w/total)*100, 1) if total else 0.0)
+        values.append(round(w / (w + l) * 100, 1))
+        wins.append(w)
+        losses.append(l)
 
-    return jsonify({"success": True, "months": labels, "win_pct": values})
+    return jsonify({"success": True, "months": labels, "win_pct": values, "wins": wins, "losses": losses})
 
 @app.route("/api/team-stats/<team_id>")
 def api_team_stats(team_id):

@@ -4,7 +4,7 @@
 
 {% block head %}
     <link rel="stylesheet" href="/static/css/team_trends.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -262,35 +262,67 @@
   const content = document.getElementById('trend-content');
   content.innerHTML = `
     <div class="trend-chart">
-      <h4>Win % by Month</h4>
-      <div class="bar-chart">
-        <canvas id="monthlyChart"></canvas>
-      </div>
+      <h4>Win % by month</h4>
+      <div class="chart-box"><canvas id="monthlyChart" role="img" aria-label="Win percentage by month; values are listed in the table below"></canvas></div>
+      <div class="table-wrap monthly-table"><table class="data-table" id="monthly-table"></table></div>
     </div>
   `;
   generateMonthlyChart(currentTeamId, document.getElementById('season-select').value);
 }
 
-    async function generateMonthlyChart(teamId, season) {
+let monthlyChart = null;
+
+async function generateMonthlyChart(teamId, season) {
   const resp = await fetch(`/api/team-monthly-series?team_id=${teamId}&season=${encodeURIComponent(season)}`);
   const data = await resp.json();
-  if (!data.success) {
-    console.error('monthly-series error', data.error);
+  if (!data.success || !data.months.length) {
+    document.getElementById('trend-content').innerHTML =
+      `<p class="no-data">${data.success ? 'No games played yet this season.' : 'Could not load monthly results.'}</p>`;
     return;
   }
-  const ctx = document.getElementById('monthlyChart').getContext('2d');
-  new Chart(ctx, {
+
+  CourtCharts.applyDefaults();
+  const colors = CourtCharts.colors();
+  if (monthlyChart) monthlyChart.destroy();
+  monthlyChart = new Chart(document.getElementById('monthlyChart'), {
     type: 'bar',
     data: {
       labels: data.months,
-      datasets: [{ label: 'Win %', data: data.win_pct, backgroundColor: '#3e95cd' }]
+      datasets: [{ label: 'Win %', data: data.win_pct, backgroundColor: colors.accent }],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: { y: { beginAtZero: true, max: 100 } }
-    }
+      plugins: {
+        tooltip: {
+          displayColors: false,
+          callbacks: {
+            label: item => `${item.parsed.y.toFixed(1)}% (${data.wins[item.dataIndex]}-${data.losses[item.dataIndex]})`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, max: 100, ticks: { stepSize: 25, callback: v => `${v}%` } },
+      },
+    },
   });
+
+  // Table view: the same numbers, readable without hovering
+  const table = document.getElementById('monthly-table');
+  const head = document.createElement('tr');
+  const rows = [['Record', i => `${data.wins[i]}-${data.losses[i]}`], ['Win %', i => `${data.win_pct[i].toFixed(1)}%`]];
+  ['', ...data.months].forEach(m => { const th = document.createElement('th'); th.textContent = m; head.append(th); });
+  const body = document.createElement('tbody');
+  rows.forEach(([name, value]) => {
+    const tr = document.createElement('tr');
+    const label = document.createElement('td');
+    label.textContent = name;
+    label.className = 'row-label';
+    tr.append(label, ...data.months.map((_, i) => { const td = document.createElement('td'); td.textContent = value(i); return td; }));
+    body.append(tr);
+  });
+  const thead = document.createElement('thead');
+  thead.append(head);
+  table.replaceChildren(thead, body);
 }
 
     async function loadRosterAnalysis() {
