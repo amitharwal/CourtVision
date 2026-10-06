@@ -353,6 +353,15 @@
       body.hidden = true;
     };
 
+    // Hosted copies only have some seasons' game logs (null: every season can be fetched).
+    const available = payload?.gamelog_seasons?.[type];
+    if (available && !available.includes(seasonId)) {
+      UI.refreshing(body, false);
+      showMessage(`${type === 'playoffs' ? 'Playoff game logs' : 'Game logs'} for ${seasonId} aren't on this site yet. ` +
+                  'The season stats above cover every season.');
+      return;
+    }
+
     try {
       const res = await fetch(`/api/player/${playerId}/gamelog?season=${encodeURIComponent(seasonId)}&season_type=${type}`);
       const data = await res.json();

@@ -53,8 +53,10 @@ with these environment variables:
 | `COURTVISION_WARM` | `0` (nothing to warm on the host) |
 | `COURTVISION_CACHE` | cache file path; put it on a persistent disk if the host has one |
 
-Unpublished data (older seasons, retired players) returns a clear "not published yet"
-message immediately instead of waiting on the NBA API.
+Pages offer only what has been published: season menus list published seasons, the
+Playoffs option turns on once a season's playoffs have games, and player search finds
+players whose pages were published. Anything else (e.g. an old shared link) returns a
+clear "not published yet" message immediately instead of waiting on the NBA API.
 
 ### 2. Fetcher
 Put the host's URL and token in `~/.config/courtvision/publish.env` (`chmod 600`):
@@ -65,7 +67,7 @@ COURTVISION_PUBLISH_TOKEN=the-same-secret-as-the-host
 Then:
 ```bash
 scripts/run_fetcher.sh hourly    # league tables, standings, all teams (~1 min)
-scripts/run_fetcher.sh nightly   # + every active player's pages and shot charts
+scripts/run_fetcher.sh nightly   # + every active player's pages and shot charts (and playoff ones in the playoffs)
 scripts/run_fetcher.sh live      # today's scoreboard (seconds; for game nights)
 ```
 Only entries that changed since the last publish are sent. Add `--full` to the underlying

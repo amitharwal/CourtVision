@@ -19,7 +19,9 @@ from nba_api.stats.static import teams, players
 import nba_client
 from metrics import calculate_efficiency, calculate_true_shooting
 from nba_client import (
+    ANY,
     OFFLINE,
+    SEASON,
     NBAUnavailable,
     get_league_player_stats,
     get_league_team_stats,
@@ -36,6 +38,8 @@ from nba_client import (
     get_team_player_dashboard,
     nbacall_retry,
     parse_season_type,
+    published_player_ids,
+    published_seasons,
     warm_cache,
 )
 
@@ -68,6 +72,53 @@ def inject_layout():
 
 HOSTED_MISSING = "This data hasn't been published to this site yet. Try the current season, or check back after the next update."
 
+# Cache-key patterns (see nba_client.published_seasons) for the data behind each page.
+LEAGUE_STATS = ("league_player_stats", SEASON, "Base", "Regular Season")
+PLAYOFF_STATS = ("league_player_stats", SEASON, "Base", "Playoffs")
+
+def season_choices(pattern=LEAGUE_STATS):
+    """
+    Seasons a page offers, newest first: every season, or in hosted mode just those
+    with published data matching pattern (at least the current one, so pages that
+    have nothing yet still render and explain themselves).
+    """
+    published = published_seasons(pattern)
+    if published is None:
+        return get_seasons()
+    return published or get_seasons()[:1]
+
+def current_season():
+    """The newest season with league data: the default wherever no season is given."""
+    return season_choices()[0]
+
+def playoff_seasons():
+    """Seasons with playoff games to show, or None when any season can be requested."""
+    published = published_seasons(PLAYOFF_STATS)
+    if published is None:
+        return None
+    seasons = []
+    for season in published:
+        try:
+            if not get_league_player_stats(season, "Base", "Playoffs").empty:
+                seasons.append(season)
+        except Exception as e:
+            print(f"[WARN] playoff stats for {season} unreadable: {e}")
+    return seasons
+
+def missed_playoffs(player_id: int, season: str) -> bool:
+    """
+    Hosted mode: True when the season's playoff stats are published and the player
+    isn't in them, so a missing playoff log or shot chart means "no playoff games",
+    not "not published yet".
+    """
+    if season not in (published_seasons(PLAYOFF_STATS) or []):
+        return False
+    try:
+        df = get_league_player_stats(season, "Base", "Playoffs")
+    except Exception:
+        return False
+    return int(player_id) not in set(df["PLAYER_ID"].astype(int)) if not df.empty else True
+
 def error_response(e, message, status=503):
     """JSON error for an API route; hosted-mode misses get an explanation instead."""
     if isinstance(e, NBAUnavailable):
@@ -78,7 +129,7 @@ def error_response(e, message, status=503):
 def home():
     # Games, leaders and standings load client-side so the page renders without
     # waiting on the NBA API.
-    return render_template("home.html", season=get_seasons()[0])
+    return render_template("home.html", season=current_season())
 
 @app.route("/privacy_policy")
 def privacy_policy():
@@ -130,7 +181,7 @@ def _scoreboard_game(game, team_rows):
 @app.route("/api/league-leaders")
 def api_league_leaders():
     """Top players per game in PTS/REB/AST for the home page."""
-    season = request.args.get("season") or get_seasons()[0]
+    season = request.args.get("season") or current_season()
     limit = min(request.args.get("limit", default=5, type=int), 10)
 
     try:
@@ -172,25 +223,27 @@ def players_page():
 @app.route("/shot-charts")
 def shot_charts():
     nba_teams = teams.get_teams()
-    return render_template("shot_charts.html", teams=nba_teams, seasons=get_seasons())
+    return render_template("shot_charts.html", teams=nba_teams,
+                           seasons=season_choices(("shot_chart", ANY, SEASON, "Regular Season")),
+                           playoff_seasons=playoff_seasons())
 
 @app.route("/advanced-metrics")
 def advanced_metrics():
-    return render_template("advanced_metrics.html", seasons=get_seasons())
+    return render_template("advanced_metrics.html", seasons=season_choices(), playoff_seasons=playoff_seasons())
 
 @app.route("/team-trends")
 def team_trends():
     team_list = teams.get_teams()
-    seasons = get_seasons()
+    seasons = season_choices(("league_team_stats", SEASON))
     return render_template("team_trends.html", teams=team_list, seasons=seasons)
 
 @app.route("/standings")
 def standings():
-    return render_template("standings.html", seasons=get_seasons())
+    return render_template("standings.html", seasons=season_choices(("standings", SEASON)))
 
 @app.route("/api/standings")
 def api_standings():
-    season = request.args.get("season") or get_seasons()[0]
+    season = request.args.get("season") or current_season()
 
     try:
         df = get_standings(season)
@@ -234,7 +287,7 @@ def compare_players():
 @app.route("/api/team-monthly-series")
 def api_team_monthly_series():
     team_id = request.args.get("team_id", type=int)
-    season  = request.args.get("season", default=get_seasons()[0])
+    season  = request.args.get("season", default=current_season())
 
     if not team_id:
         return jsonify({"success": False, "error": "team_id required"}), 400
@@ -269,7 +322,7 @@ def api_team_monthly_series():
 
 @app.route("/api/team-stats/<team_id>")
 def api_team_stats(team_id):
-    season = request.args.get("season", get_seasons()[0])
+    season = request.args.get("season", current_season())
 
     try:
         team_id_int = int(team_id)
@@ -415,7 +468,7 @@ def api_team_stats(team_id):
 
 @app.route("/api/roster-analysis/<team_id>")
 def api_roster_analysis(team_id):
-    season = request.args.get("season", get_seasons()[0])
+    season = request.args.get("season", current_season())
 
     try:
         dfs = get_team_player_dashboard(team_id, season)
@@ -470,7 +523,7 @@ def api_roster_analysis(team_id):
 @app.route("/api/players")
 def get_players():
     try:
-        season = request.args.get("season", get_seasons()[0])
+        season = request.args.get("season", current_season())
         team_code = request.args.get("team", "all")
         position_filter = request.args.get("position", "all")
         sort_by = request.args.get("sort_by", "PTS")
@@ -697,6 +750,7 @@ def get_player_detail(player_id: int):
 
         return jsonify({
             "success": True,
+            "gamelog_seasons": gamelog_seasons(player_id),
             "player_info": info,                 # current team/bio
             "seasons_regular": seasons_regular,  # enriched rows (newest->oldest)
             "seasons_postseason": seasons_postseason,
@@ -709,13 +763,30 @@ def get_player_detail(player_id: int):
         print(f"[ERROR] /api/player/{player_id}: {e}")
         return error_response(e, str(e), 500)
 
+def gamelog_seasons(player_id: int):
+    """
+    {"regular": [...], "playoffs": [...]}: seasons whose game logs this player's page
+    can show, or None when any season can be requested. Playoffs include every season
+    with published playoff stats: a player missing from them simply had no playoff games.
+    """
+    regular = published_seasons(("player_gamelog", player_id, SEASON, "Regular Season"))
+    if regular is None:
+        return None
+    playoffs = set(published_seasons(("player_gamelog", player_id, SEASON, "Playoffs")))
+    playoffs.update(playoff_seasons())
+    return {"regular": regular, "playoffs": sorted(playoffs, reverse=True)}
+
 @app.route("/api/player/<int:player_id>/gamelog")
 def api_player_gamelog(player_id: int):
-    season = request.args.get("season") or get_seasons()[0]
+    season = request.args.get("season") or current_season()
     season_type = parse_season_type(request.args.get("season_type"))
 
     try:
         df = get_player_gamelog(player_id, season, season_type)
+    except NBAUnavailable as e:
+        if season_type != "Playoffs" or not missed_playoffs(player_id, season):
+            return error_response(e, "")
+        df = None
     except Exception as e:
         print(f"[ERROR] /api/player/{player_id}/gamelog: {e}")
         return error_response(e, "Unable to fetch game log from NBA API.")
@@ -738,11 +809,15 @@ def api_player_gamelog(player_id: int):
 
 @app.route("/api/shot-chart/<int:player_id>")
 def api_shot_chart(player_id: int):
-    season = request.args.get("season", get_seasons()[0])
+    season = request.args.get("season", current_season())
     season_type = parse_season_type(request.args.get("season_type"))
 
     try:
         df = get_shot_chart(player_id, season, season_type)
+    except NBAUnavailable as e:
+        if season_type != "Playoffs" or not missed_playoffs(player_id, season):
+            return error_response(e, "")
+        df = None
     except Exception as e:
         print(f"[ERROR] /api/shot-chart/{player_id}: {e}")
         return error_response(e, "Unable to fetch shot data from NBA API.")
@@ -773,7 +848,7 @@ def player_detail(player_id: int):
 @app.route("/api/export/players")
 def export_players():
     try:
-        season = request.args.get("season", get_seasons()[0])
+        season = request.args.get("season", current_season())
         team_code = request.args.get("team", "all")
         sort_by = request.args.get("sort_by", "PTS")
         season_type = parse_season_type(request.args.get("season_type"))
@@ -830,9 +905,10 @@ def search_players():
         if not query:
             return jsonify({"success": True, "players": []})
 
+        published = published_player_ids()  # hosted mode: only players with a page here
         ranked = []
         for p, name in searchable_players():
-            if query not in name:
+            if query not in name or (published is not None and p["id"] not in published):
                 continue
             # Names (or a first/last name) that start with the query rank first, then active players.
             word_prefix = (" " + name).find(" " + query) != -1
@@ -889,6 +965,7 @@ def api_ingest_cache_entries():
     except (ValueError, KeyError, TypeError, zlib.error) as e:
         return jsonify({"success": False, "error": f"Bad upload: {e}"}), 400
 
+    nba_client._PUBLISHED["ts"] = 0.0  # re-read the published keys on next use
     return jsonify({"success": True, "stored": stored})
 
 @app.cli.command("publish")

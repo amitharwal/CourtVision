@@ -49,6 +49,24 @@ const UI = {
     el.setAttribute('aria-busy', on ? 'true' : 'false');
   },
 
+  // Disable the Playoffs option of a season-type <select> for seasons without
+  // playoff data. seasons: those that have it, or null when every season does.
+  // Falls back to Regular Season (firing 'change') when the season changes.
+  limitPlayoffs(seasonSelect, typeSelect, seasons) {
+    const option = [...typeSelect.options].find(o => o.value === 'playoffs');
+    if (!seasons || !option) return;
+    const update = () => {
+      option.disabled = !seasons.includes(seasonSelect.value);
+      option.title = option.disabled ? `No playoff data for ${seasonSelect.value}` : '';
+      if (option.disabled && typeSelect.value === 'playoffs') {
+        typeSelect.value = 'regular';
+        typeSelect.dispatchEvent(new Event('change'));
+      }
+    };
+    seasonSelect.addEventListener('change', update);
+    update();
+  },
+
   // A player search result as a keyboard-reachable <button> with headshot.
   playerOption(player, onSelect) {
     const btn = document.createElement('button');
