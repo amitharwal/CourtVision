@@ -124,6 +124,8 @@
         async function restoreFromUrl() {
             UrlState.apply('season-select', 'season');
             UrlState.apply('season-type', 'type');
+            UI.limitPlayoffs(document.getElementById('season-select'), document.getElementById('season-type'),
+                             {{ playoff_seasons|tojson }});
             UrlState.apply('shot-type', 'shot');
             UrlState.apply('period-select', 'period');
             const id = parseInt(UrlState.get('player'), 10);

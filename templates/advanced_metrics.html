@@ -160,8 +160,10 @@
                 document.getElementById('min-attempts').value =
                     MIN_ATTEMPTS_DEFAULT[document.getElementById('season-type').value];
             }
-            toggleAttemptsControl();
             const hasSeason = UrlState.apply('season-select', 'season');
+            UI.limitPlayoffs(document.getElementById('season-select'), document.getElementById('season-type'),
+                             {{ playoff_seasons|tojson }});
+            toggleAttemptsControl();
             updateMetricExplanation();
             if (hasSeason) loadMetrics();
         });

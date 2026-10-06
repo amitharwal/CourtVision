@@ -11,6 +11,7 @@ Configuration (environment variables):
   COURTVISION_OFFLINE  "1" = hosted mode: never call stats.nba.com; serve only data
                      published into the cache by a fetcher (see publish.py)
 """
+import ast
 import json
 import os
 import sqlite3
@@ -178,6 +179,11 @@ class DiskCache:
         with self._db() as db:
             return db.execute(f"SELECT key, ts, value FROM {self.TABLE} WHERE ts > ? ORDER BY ts", (ts,)).fetchall()
 
+    def keys(self):
+        """Every stored key (the repr() text)."""
+        with self._db() as db:
+            return [row[0] for row in db.execute(f"SELECT key FROM {self.TABLE}")]
+
     def prune(self, max_age: float):
         with self._db() as db:
             db.execute(f"DELETE FROM {self.TABLE} WHERE ts < ?", (_now() - max_age,))
@@ -233,6 +239,67 @@ def cached(key, ttl: int, loader):
     if _DISK is not None:
         _DISK.set(key, now, value)
     return value
+
+# ------------------------------------------------------------------------------
+# What a hosted copy holds. In hosted mode only published data can be served, so
+# pages offer just the seasons, players and season types that were published.
+# ------------------------------------------------------------------------------
+ANY = object()     # published_seasons() pattern part: matches anything
+SEASON = object()  # published_seasons() pattern part: the season to report
+PUBLISHED_TTL = 60  # seconds between re-reads of the published keys
+
+_PUBLISHED = {"ts": 0.0, "keys": frozenset()}
+
+def published_keys():
+    """
+    Cache-key tuples a hosted copy holds, re-read at most once a minute. None when
+    anything can be fetched on demand (not hosted mode, or no disk cache to read).
+    """
+    if not OFFLINE or _DISK is None:
+        return None
+    now = _now()
+    if now - _PUBLISHED["ts"] > PUBLISHED_TTL:
+        keys = set()
+        for text in _DISK.keys():
+            try:
+                key = ast.literal_eval(text)  # keys are repr() of tuples of literals
+            except (ValueError, SyntaxError):
+                continue
+            if isinstance(key, tuple):
+                keys.add(key)
+        _PUBLISHED.update(ts=now, keys=frozenset(keys))
+    return _PUBLISHED["keys"]
+
+def published_seasons(pattern):
+    """
+    Seasons (newest first) with a published entry matching pattern, a cache-key tuple
+    with SEASON where the season goes and ANY for parts that don't matter, e.g.
+    ("shot_chart", ANY, SEASON, "Regular Season"). None when not limited to published data.
+    """
+    keys = published_keys()
+    if keys is None:
+        return None
+    found = set()
+    for key in keys:
+        if len(key) != len(pattern):
+            continue
+        season = None
+        for part, want in zip(key, pattern):
+            if want is SEASON:
+                season = part
+            elif want is not ANY and part != want:
+                break
+        else:
+            if isinstance(season, str):
+                found.add(season)
+    return sorted(found, reverse=True)
+
+def published_player_ids():
+    """IDs of players whose pages were published, or None when not limited to published data."""
+    keys = published_keys()
+    if keys is None:
+        return None
+    return {key[1] for key in keys if len(key) == 2 and key[0] == "player_profile"}
 
 def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
     """
@@ -442,7 +509,8 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
     - default: league tables, standings, positions, today's scoreboard and, with
       include_teams, every team's game log and roster (~66 requests)
     - include_players: also every active player's bio, career profile, game log and
-      shot chart for the season (~4 requests per player; run nightly)
+      shot chart for the season (~4 requests per player; run nightly), plus the
+      playoff game log and shot chart of everyone who played in the playoffs
     progress(done, total, name) is called after each job if given.
     Returns {"season", "ok": [...], "failed": {name: error}}.
     """
@@ -457,6 +525,9 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
             ("season status", lambda: season_has_started(season)),
             ("league player stats", lambda: get_league_player_stats(season)),
             ("league advanced stats", lambda: get_league_player_stats(season, "Advanced")),
+            # Empty until the playoffs start; pages offer playoffs once it has rows.
+            ("league playoff stats", lambda: get_league_player_stats(season, "Base", "Playoffs")),
+            ("league playoff advanced stats", lambda: get_league_player_stats(season, "Advanced", "Playoffs")),
             ("league team stats", lambda: get_league_team_stats(season)),
             ("team estimated metrics", lambda: get_team_estimated_metrics(season)),
             ("standings", lambda: get_standings(season)),
@@ -489,6 +560,11 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
         except Exception as e:
             failed["player list"] = str(e)
             player_ids = []
+        try:
+            playoff_ids = [int(pid) for pid in get_league_player_stats(season, "Base", "Playoffs")["PLAYER_ID"]]
+        except Exception as e:
+            failed["playoff player list"] = str(e)
+            playoff_ids = []
         player_jobs = []
         for pid in player_ids:
             player_jobs += [
@@ -496,6 +572,11 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
                 (f"player {pid} profile", lambda pid=pid: get_player_profile(pid)),
                 (f"player {pid} game log", lambda pid=pid: get_player_gamelog(pid, season)),
                 (f"player {pid} shot chart", lambda pid=pid: get_shot_chart(pid, season)),
+            ]
+        for pid in playoff_ids:
+            player_jobs += [
+                (f"player {pid} playoff game log", lambda pid=pid: get_player_gamelog(pid, season, "Playoffs")),
+                (f"player {pid} playoff shot chart", lambda pid=pid: get_shot_chart(pid, season, "Playoffs")),
             ]
         total += len(player_jobs)
         for i, (name, job) in enumerate(player_jobs, len(jobs) + 1):

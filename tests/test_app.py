@@ -1,6 +1,7 @@
 import gzip
 import json
 import os
+import re
 import tempfile
 import time
 import unittest
@@ -148,12 +149,19 @@ class HostedModeTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "host.sqlite3"))
         for patcher in (mock.patch.object(nba_client, "_DISK", self.disk),
+                        mock.patch.object(nba_client, "OFFLINE", True),
                         mock.patch.object(app_module, "OFFLINE", True),
                         mock.patch.dict(os.environ, {"COURTVISION_PUBLISH_TOKEN": self.TOKEN})):
             patcher.start()
             self.addCleanup(patcher.stop)
         nba_client._CACHE.clear()
+        nba_client._PUBLISHED["ts"] = 0.0
         self.client = app_module.app.test_client()
+
+    def put(self, key, value):
+        """Publish one entry straight into the host's cache."""
+        self.disk.put_raw(repr(key), time.time(), nba_client.dumps_value(value))
+        nba_client._PUBLISHED["ts"] = 0.0
 
     def upload(self, entries, token=TOKEN):
         body = gzip.compress(json.dumps(entries).encode())
@@ -191,6 +199,42 @@ class HostedModeTest(unittest.TestCase):
         bad = self.standings_entry() | {"key": "__import__('os')"}
         self.assertEqual(self.upload([bad]).status_code, 400)
         self.assertEqual(self.upload([self.standings_entry() | {"value": {"__df__": "not json"}}]).status_code, 400)
+
+
+    def test_pages_offer_only_published_seasons(self):
+        self.put(("standings", "2023-24"), pd.DataFrame())
+        self.put(("standings", "2025-26"), pd.DataFrame())
+        html = self.client.get("/standings").get_data(as_text=True)
+        self.assertEqual(re.findall(r'<option value="([^"]+)"', html), ["2025-26", "2023-24"])
+
+    def test_default_season_is_newest_published_league_season(self):
+        self.put(("league_player_stats", "2024-25", "Base", "Regular Season"), pd.DataFrame())
+        with app_module.app.test_request_context():
+            self.assertEqual(app_module.current_season(), "2024-25")
+
+    def test_search_finds_only_published_players(self):
+        self.put(("player_profile", 2544), {})
+        names = [p["name"] for p in self.client.get("/api/search-players?q=james").get_json()["players"]]
+        self.assertEqual(names, ["LeBron James"])
+
+    def test_playoffs_offered_only_once_they_have_games(self):
+        frames = _league_frames()
+        self.put(("league_player_stats", "2024-25", "Base", "Playoffs"), frames["Base"])
+        self.put(("league_player_stats", "2025-26", "Base", "Playoffs"), frames["Base"].iloc[0:0])
+        self.assertEqual(app_module.playoff_seasons(), ["2024-25"])
+
+    def test_player_missing_from_published_playoffs_had_no_playoff_games(self):
+        self.put(("league_player_stats", "2024-25", "Base", "Playoffs"), _league_frames()["Base"])
+        url = "/api/player/{}/gamelog?season=2024-25&season_type=playoffs"
+        self.assertEqual(self.client.get(url.format(999)).get_json()["games"], [])
+        # A playoff player whose log wasn't published is reported as unpublished.
+        self.assertEqual(self.client.get(url.format(1)).status_code, 503)
+        self.assertEqual(self.client.get("/api/shot-chart/999?season=2024-25&season_type=playoffs").status_code, 404)
+
+    def test_player_api_lists_published_game_log_seasons(self):
+        self.put(("player_gamelog", 1, "2025-26", "Regular Season"), pd.DataFrame())
+        self.put(("league_player_stats", "2024-25", "Base", "Playoffs"), _league_frames()["Base"])
+        self.assertEqual(app_module.gamelog_seasons(1), {"regular": ["2025-26"], "playoffs": ["2024-25"]})
 
 
 class PublishTest(unittest.TestCase):
