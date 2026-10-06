@@ -27,34 +27,68 @@ FLASK_DEBUG=1 python app.py    # with the debugger and auto-reload
 Set `PORT` to use a different port.
 
 ## Deploying
+stats.nba.com blocks or stalls requests from cloud servers (the "NBA API connectivity"
+GitHub Action confirms it: every endpoint times out from a GitHub/Azure runner). So the
+hosted site never calls the NBA itself. Instead:
+
+- **Host** runs in hosted mode and serves only data that has been published to it.
+- **Fetcher** runs on a machine the NBA doesn't block (e.g. your own computer), fetches
+  the data and publishes changed entries to the host over HTTPS.
+
+```
+your computer (fetcher)                         cloud host (COURTVISION_OFFLINE=1)
+stats.nba.com -> cache.sqlite3 -- publish -->   /api/admin/cache-entries -> cache.sqlite3 -> pages
+```
+
+### 1. Host
 ```bash
 gunicorn app:app -c gunicorn.conf.py    # also what the Procfile runs
 ```
-`gunicorn.conf.py` binds to `$PORT`, runs `WEB_CONCURRENCY` workers (default 2) and starts
-`flask --app app warm-cache` in the background so the cache is full before visitors arrive.
+with these environment variables:
 
-**Check the NBA API first.** stats.nba.com blocks or stalls requests from many cloud
-providers. Run this on the host (or look at the "NBA API connectivity" GitHub Action, which
-runs it from a cloud runner):
+| Variable | Value |
+|---|---|
+| `COURTVISION_OFFLINE` | `1` (never call stats.nba.com) |
+| `COURTVISION_PUBLISH_TOKEN` | a long random secret, e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`; publishing is disabled when unset |
+| `COURTVISION_WARM` | `0` (nothing to warm on the host) |
+| `COURTVISION_CACHE` | cache file path; put it on a persistent disk if the host has one |
+
+Unpublished data (older seasons, retired players) returns a clear "not published yet"
+message immediately instead of waiting on the NBA API.
+
+### 2. Fetcher
+Put the host's URL and token in `~/.config/courtvision/publish.env` (`chmod 600`):
 ```bash
-python scripts/check_nba_api.py
+COURTVISION_URL=https://your-site.example.com
+COURTVISION_PUBLISH_TOKEN=the-same-secret-as-the-host
 ```
-If it fails, set `NBA_PROXY` to a proxy the NBA accepts, or host somewhere that isn't blocked.
+Then:
+```bash
+scripts/run_fetcher.sh hourly    # league tables, standings, all teams (~1 min)
+scripts/run_fetcher.sh nightly   # + every active player's pages and shot charts
+scripts/run_fetcher.sh live      # today's scoreboard (seconds; for game nights)
+```
+Only entries that changed since the last publish are sent. Add `--full` to the underlying
+`flask --app app publish` command to resend everything to a freshly deployed host.
+`deploy/macos/` has launchd schedules for all three jobs (every 5 min / hourly / 4:30 AM).
+Data on the host is only as fresh as the last publish, so the fetcher machine needs to be
+on and online.
+
+### Self-hosting without a fetcher
+On a machine that can reach stats.nba.com (check with `python scripts/check_nba_api.py`),
+run the same gunicorn command without `COURTVISION_OFFLINE`. It calls the NBA API directly
+and warms its cache at startup.
 
 | Variable | Purpose |
 |---|---|
 | `NBA_PROXY` | Proxy URL for stats.nba.com (comma-separate several to rotate) |
 | `NBA_TIMEOUT` | NBA API timeout in seconds (default 30) |
-| `COURTVISION_CACHE` | Cache file path (default `instance/cache.sqlite3`), or `off` |
-| `COURTVISION_WARM` | `0` skips cache warming at startup |
 | `WEB_CONCURRENCY`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT` | gunicorn workers, threads per worker, request timeout |
-
-The cache lives on local disk; on hosts with ephemeral disks it simply re-warms after a
-restart. Warm it by hand any time with `flask --app app warm-cache`.
 
 ## Project layout
 - `app.py`: Flask routes (pages and JSON API)
 - `nba_client.py`: stats.nba.com access with retries and a memory + SQLite TTL cache
+- `publish.py`: sends cached data from a fetcher to a hosted copy of the site
 - `metrics.py`: box-score derived metrics
 - `templates/`: Jinja templates; every page extends `base.html`
 - `static/css/`: per-page stylesheets
