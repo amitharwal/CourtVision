@@ -1,3 +1,6 @@
+import os
+import tempfile
+import time
 import unittest
 from datetime import datetime
 from unittest import mock
@@ -14,6 +17,10 @@ def setUpModule():
     patcher = mock.patch.object(nba_client, "season_has_started", return_value=True)
     patcher.start()
     unittest.addModuleCleanup(patcher.stop)
+    # Never read or write the real on-disk cache from tests.
+    disk = mock.patch.object(nba_client, "_DISK", None)
+    disk.start()
+    unittest.addModuleCleanup(disk.stop)
 
 
 class MetricsTest(unittest.TestCase):
@@ -70,6 +77,50 @@ class CacheTest(unittest.TestCase):
     def test_raises_when_nothing_cached(self):
         with self.assertRaises(TimeoutError):
             nba_client.cached("k", 60, mock.Mock(side_effect=TimeoutError))
+
+
+class DiskCacheTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "cache.sqlite3"))
+        patcher = mock.patch.object(nba_client, "_DISK", self.disk)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        nba_client._CACHE.clear()
+
+    def test_survives_a_restart(self):
+        df = pd.DataFrame({"PTS": [30]})
+        nba_client.cached("k", 60, lambda: df)
+        nba_client._CACHE.clear()  # simulate a new process
+        loader = mock.Mock()
+        self.assertTrue(nba_client.cached("k", 60, loader).equals(df))
+        loader.assert_not_called()
+
+    def test_serves_stale_disk_copy_when_api_fails(self):
+        self.disk.set("k", time.time() - 3600, "old")
+        self.assertEqual(nba_client.cached("k", 60, mock.Mock(side_effect=TimeoutError)), "old")
+
+    def test_prune_removes_old_entries(self):
+        self.disk.set("old", time.time() - 10 * 24 * 3600, 1)
+        self.disk.set("new", time.time(), 2)
+        self.disk.prune(7 * 24 * 3600)
+        self.assertIsNone(self.disk.get("old"))
+        self.assertEqual(self.disk.get("new")[1], 2)
+
+
+class ProxySettingTest(unittest.TestCase):
+    def test_single_proxy_is_a_string(self):
+        with mock.patch.dict(os.environ, {"NBA_PROXY": "http://proxy:8080"}):
+            self.assertEqual(nba_client._proxy_setting(), "http://proxy:8080")
+
+    def test_several_proxies_rotate_as_a_list(self):
+        with mock.patch.dict(os.environ, {"NBA_PROXY": "http://a:1, http://b:2"}):
+            self.assertEqual(nba_client._proxy_setting(), ["http://a:1", "http://b:2"])
+
+    def test_unset_means_no_proxy(self):
+        with mock.patch.dict(os.environ, {"NBA_PROXY": ""}):
+            self.assertIsNone(nba_client._proxy_setting())
 
 
 class PagesTest(unittest.TestCase):
@@ -229,7 +280,7 @@ class RosterAnalysisApiTest(unittest.TestCase):
         roster = pd.DataFrame([{"PLAYER_ID": 77, "PLAYER_NAME": "Star", "GP": 10, "PTS": 300, "REB": 50, "AST": 60,
                                 "STL": 10, "BLK": 5, "FGA": 200, "FGM": 100, "FTA": 50, "FTM": 40, "TOV": 25}])
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), roster]))
-        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint):
+        with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint):
             data = app_module.app.test_client().get("/api/roster-analysis/1?season=2024-25").get_json()
         # (300+50+60+10+5) - ((200-100) + (50-40) + 25) = 290 over 10 games
         self.assertEqual(data["most_efficient"]["stat"], 29.0)
