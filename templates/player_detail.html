@@ -340,7 +340,7 @@
       body.hidden = true;
     };
 
-    // Hosted copies only have some seasons' game logs (null: every season can be fetched).
+    // The site only has some seasons' game logs (null: every season can be fetched).
     const available = payload?.gamelog_seasons?.[type];
     if (available && !available.includes(seasonId)) {
       UI.refreshing(body, false);

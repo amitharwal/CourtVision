@@ -85,7 +85,7 @@ def inject_layout():
         "current_year": datetime.now().year,
     }
 
-HOSTED_MISSING = "This isn't on the site yet. Try the current season, or check back after the next update."
+NOT_ON_SITE = "This isn't on the site yet. Try the current season, or check back after the next update."
 
 # Cache-key patterns (see nba_client.published_seasons) for the data behind each page.
 LEAGUE_STATS = ("league_player_stats", SEASON, "Base", "Regular Season")
@@ -93,8 +93,8 @@ PLAYOFF_STATS = ("league_player_stats", SEASON, "Base", "Playoffs")
 
 def season_choices(pattern=LEAGUE_STATS):
     """
-    Seasons a page offers, newest first: every season, or in hosted mode just those
-    with published data matching pattern (at least the current one, so pages that
+    Seasons a page offers, newest first: every season, or in offline mode (and builds)
+    just those with cached data matching pattern (at least the current one, so pages that
     have nothing yet still render and explain themselves).
     """
     published = published_seasons(pattern)
@@ -121,9 +121,9 @@ def playoff_seasons():
     return seasons
 
 def error_response(e, message, status=503):
-    """JSON error for a data route; data that isn't cached (hosted mode, builds) gets an explanation instead."""
+    """JSON error for a data route; data that isn't cached (offline mode, builds) gets an explanation instead."""
     if isinstance(e, NBAUnavailable):
-        return jsonify({"success": False, "error": HOSTED_MISSING, "hosted": True}), 503
+        return jsonify({"success": False, "error": NOT_ON_SITE, "offline": True}), 503
     print(f"[ERROR] {request.path}: {e}")
     return jsonify({"success": False, "error": message}), status
 
@@ -315,10 +315,10 @@ def team_monthly_series(team_id: int, season: str) -> dict:
 def team_stats(team_id_int: int, season: str) -> dict:
     """Record, per-game averages, shooting, ratings and home/road splits for a team-season."""
     if OFFLINE:
-        # The fallbacks below swallow errors and return zeros; in hosted mode a
-        # missing season should say so instead.
+        # The fallbacks below swallow errors and return zeros; in offline mode a
+        # season that wasn't fetched should say so instead.
         get_league_team_stats(season)
-        get_team_gamelog_cached(team_id_int, season)  # raises if not published
+        get_team_gamelog_cached(team_id_int, season)  # raises if not cached
 
     gl_df = get_team_gamelog_cached(team_id_int, season, timeout_sec=30)
 
@@ -662,9 +662,6 @@ def get_player_detail(player_id: int):
             r["TOV_TOTAL"] = float(r.get("TOV") or 0.0)
 
             # Advanced shooting
-            fg_pct  = float(r.get("FG_PCT") or 0.0) * 100.0
-            fg3_pct = float(r.get("FG3_PCT") or 0.0) * 100.0
-            ft_pct  = float(r.get("FT_PCT") or 0.0) * 100.0
             fga     = float(r.get("FGA") or 0.0)
             fta     = float(r.get("FTA") or 0.0)
             fgm     = float(r.get("FGM") or 0.0)
@@ -821,7 +818,7 @@ def searchable_players():
 def api_player_index():
     """
     Players to search, as {id, name, is_active, key} with key the normalize_name() form
-    pages match against. In hosted mode, only players whose pages were published.
+    pages match against. In offline mode (and builds), only players whose pages are cached.
     """
     published = published_player_ids()
     return jsonify({

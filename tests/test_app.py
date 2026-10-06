@@ -180,7 +180,7 @@ class PublishedDataTest(PublishedDataTestCase):
     def test_missing_data_explains_itself(self):
         resp = self.client.get("/data/standings/2024-25.json")
         self.assertEqual(resp.status_code, 503)
-        self.assertTrue(resp.get_json()["hosted"])
+        self.assertTrue(resp.get_json()["offline"])
 
     def test_missing_team_log_is_not_reported_as_an_empty_season(self):
         self.assertEqual(self.client.get("/data/teams/2024-25/1.json").status_code, 503)
@@ -403,7 +403,7 @@ class PlayerIndexTest(unittest.TestCase):
         self.assertEqual(self.keys["D'Angelo Russell"], "dangelo russell")
         self.assertEqual(self.keys["Shai Gilgeous-Alexander"], "shai gilgeous alexander")
 
-    def test_lists_every_player_outside_hosted_mode(self):
+    def test_lists_every_player_outside_offline_mode(self):
         self.assertGreater(len(self.keys), 4000)
 
 
