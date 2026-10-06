@@ -70,7 +70,7 @@
     if (key === 'games_back') return value === 0 ? '—' : value.toFixed(1);
     if (key === 'diff') return (value > 0 ? '+' : '') + value.toFixed(1);
     if (key === 'ppg' || key === 'opp_ppg') return value.toFixed(1);
-    return value;
+    return value ?? '—';
   }
 
   function renderTable(table, rows, season) {
@@ -125,9 +125,7 @@
     }
 
     try {
-      const res = await fetch(`/api/standings?season=${encodeURIComponent(season)}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
+      const data = await SiteData.get(`standings/${season}.json`);
       if (seasonSelect.value !== season) return;  // a newer request is in flight
 
       renderTable(document.getElementById('east-table'), data.east, season);

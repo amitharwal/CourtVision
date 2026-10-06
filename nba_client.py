@@ -79,7 +79,7 @@ def parse_season_type(value) -> str:
 TTL_SHORT = 120          # 2 minutes (live scoreboard)
 TTL_DEFAULT = 1800       # 30 minutes (season stats)
 TTL_LONG = 24 * 3600     # 1 day (player index / positions)
-DISK_MAX_AGE = 7 * 24 * 3600  # entries older than this are pruned at startup
+SCOREBOARD_MAX_AGE = 7 * 24 * 3600  # past days' scoreboards older than this are pruned at startup
 
 # ------------------------------------------------------------------------------
 # Value codec: cached values as tagged JSON (never pickle), so cache entries can
@@ -184,9 +184,12 @@ class DiskCache:
         with self._db() as db:
             return [row[0] for row in db.execute(f"SELECT key FROM {self.TABLE}")]
 
-    def prune(self, max_age: float):
+    def prune_scoreboards(self, max_age: float):
+        """Drop old daily scoreboards. Everything else is kept: the static site is built
+        from this cache, so past seasons stay on the site once fetched."""
         with self._db() as db:
-            db.execute(f"DELETE FROM {self.TABLE} WHERE ts < ?", (_now() - max_age,))
+            db.execute(f"DELETE FROM {self.TABLE} WHERE ts < ? AND key LIKE ?",
+                       (_now() - max_age, "('scoreboard', %"))
 
 def _open_disk_cache():
     path = os.environ.get("COURTVISION_CACHE", os.path.join(os.path.dirname(__file__), "instance", "cache.sqlite3"))
@@ -194,7 +197,7 @@ def _open_disk_cache():
         return None
     try:
         disk = DiskCache(path)
-        disk.prune(DISK_MAX_AGE)
+        disk.prune_scoreboards(SCOREBOARD_MAX_AGE)
         return disk
     except Exception as e:
         print(f"[WARN] disk cache disabled ({path}): {e}")

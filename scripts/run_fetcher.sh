@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
-# Fetch NBA data on this machine and publish it to the hosted Court Vision.
+# Fetch NBA data on this machine, rebuild the static site, and deploy it to
+# Cloudflare Pages if anything changed.
 #
-#   scripts/run_fetcher.sh live     # today's scoreboard           (every ~5 min on game days)
+#   scripts/run_fetcher.sh live     # today's scoreboard            (every ~10 min)
 #   scripts/run_fetcher.sh hourly   # league tables, standings, teams (hourly)
-#   scripts/run_fetcher.sh nightly  # + every active player's pages (nightly)
+#   scripts/run_fetcher.sh nightly  # + every active player's pages  (nightly)
 #
 # Settings come from the environment or, if present, from an env file (default
-# ~/.config/courtvision/publish.env; keep it chmod 600):
-#   COURTVISION_URL=https://your-site.example.com
-#   COURTVISION_PUBLISH_TOKEN=...          (same value as on the host)
+# ~/.config/courtvision/deploy.env; keep it chmod 600):
+#   CLOUDFLARE_API_TOKEN=...               (Cloudflare Pages: Edit permission)
+#   CLOUDFLARE_ACCOUNT_ID=...
+#   COURTVISION_PAGES_PROJECT=courtvision  (optional; the Pages project name)
 #   COURTVISION_PYTHON=/path/to/python3    (optional; scheduled jobs have a minimal PATH)
+#   PATH=...                               (optional; must include node/npx for deploying)
 set -euo pipefail
 
-ENV_FILE="${COURTVISION_ENV_FILE:-$HOME/.config/courtvision/publish.env}"
+ENV_FILE="${COURTVISION_ENV_FILE:-$HOME/.config/courtvision/deploy.env}"
 if [[ -f "$ENV_FILE" ]]; then
   set -a; source "$ENV_FILE"; set +a
 fi
-: "${COURTVISION_URL:?Set COURTVISION_URL (in $ENV_FILE or the environment)}"
-: "${COURTVISION_PUBLISH_TOKEN:?Set COURTVISION_PUBLISH_TOKEN (in $ENV_FILE or the environment)}"
+: "${CLOUDFLARE_API_TOKEN:?Set CLOUDFLARE_API_TOKEN (in $ENV_FILE or the environment)}"
+: "${CLOUDFLARE_ACCOUNT_ID:?Set CLOUDFLARE_ACCOUNT_ID (in $ENV_FILE or the environment)}"
 PYTHON="${COURTVISION_PYTHON:-python3}"
 
 cd "$(dirname "$0")/.."
@@ -28,5 +31,5 @@ case "${1:-}" in
   *) echo "usage: $0 live|hourly|nightly" >&2; exit 2 ;;
 esac
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] publish $1"
-exec "$PYTHON" -m flask --app app publish --url "$COURTVISION_URL" "${mode[@]}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] update $1"
+exec "$PYTHON" -m flask --app app update "${mode[@]}"

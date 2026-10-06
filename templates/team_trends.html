@@ -99,7 +99,8 @@
     }
 
     let currentTeamId = null;
-    let teamData = null;
+    let teamData = null;   // the team-season's stats
+    let teamFile = null;   // the whole data/teams/<season>/<id>.json (stats, monthly, roster)
 
     // Initialize
     document.addEventListener('DOMContentLoaded', function () {
@@ -149,9 +150,7 @@
 
         let data;
         try {
-            const resp = await fetch(`/api/team-stats/${currentTeamId}?season=${season}`);
-            data = await resp.json();
-            if (!data.success) throw new Error(data.error || 'Unable to load team data.');
+            data = await SiteData.get(`teams/${season}/${currentTeamId}.json`);
         } catch (err) {
             console.error('loadTeamData:', err);
             UI.toast(err.message || 'Unable to load team data.', { kind: 'error' });
@@ -161,6 +160,7 @@
             sections.forEach(el => UI.refreshing(el, false));
         }
 
+        teamFile = data;
         teamData = data.stats;
         sections.forEach(el => { el.style.display = 'block'; });
         displayTeamOverview();
@@ -257,17 +257,14 @@
       <div class="table-wrap monthly-table"><table class="data-table" id="monthly-table"></table></div>
     </div>
   `;
-  generateMonthlyChart(currentTeamId, document.getElementById('season-select').value);
+  generateMonthlyChart(teamFile.monthly);
 }
 
 let monthlyChart = null;
 
-async function generateMonthlyChart(teamId, season) {
-  const resp = await fetch(`/api/team-monthly-series?team_id=${teamId}&season=${encodeURIComponent(season)}`);
-  const data = await resp.json();
-  if (!data.success || !data.months.length) {
-    document.getElementById('trend-content').innerHTML =
-      `<p class="no-data">${data.success ? 'No games played yet this season.' : 'Could not load monthly results.'}</p>`;
+function generateMonthlyChart(data) {
+  if (!data.months.length) {
+    document.getElementById('trend-content').innerHTML = '<p class="no-data">No games played yet this season.</p>';
     return;
   }
 
@@ -315,18 +312,9 @@ async function generateMonthlyChart(teamId, season) {
   table.replaceChildren(thead, body);
 }
 
-    async function loadRosterAnalysis() {
+    function loadRosterAnalysis() {
     const content = document.getElementById('roster-content');
-    content.innerHTML = 'Loading...';
-
-    const season = document.getElementById('season-select').value;
-    const response = await fetch(`/api/roster-analysis/${currentTeamId}?season=${season}`);
-    const data = await response.json();
-
-    if (!data.success) {
-        content.innerHTML = 'Failed to load roster stats.';
-        return;
-    }
+    const data = teamFile.roster;
 
     content.innerHTML = `
         <div class="roster-grid">

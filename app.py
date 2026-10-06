@@ -1,10 +1,7 @@
-import hmac
 import io
-import json
 import os
 import re
 import time
-import zlib
 import unicodedata
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,10 +10,10 @@ from functools import lru_cache
 import click
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file
+from werkzeug.routing import BaseConverter
 from nba_api.stats.endpoints import LeagueGameLog, teamdashboardbygeneralsplits
 from nba_api.stats.static import teams, players
 
-import nba_client
 from metrics import calculate_efficiency, calculate_true_shooting
 from nba_client import (
     ANY,
@@ -47,7 +44,25 @@ from nba_client import (
 # Flask app
 # ------------------------------------------------------------------------------
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # compressed upload limit (publishing)
+
+# Data routes take everything from the path (no query strings), so `flask build` can
+# save each response as a static file at the same URL.
+class SeasonConverter(BaseConverter):
+    """A season like 2025-26."""
+    regex = r"\d{4}-\d{2}"
+
+class SeasonTypeConverter(BaseConverter):
+    """"regular" or "playoffs" in a URL; routes receive the NBA API name."""
+    regex = r"regular|playoffs"
+
+    def to_python(self, value):
+        return parse_season_type(value)
+
+    def to_url(self, value):
+        return "playoffs" if value == "Playoffs" else "regular"
+
+app.url_map.converters["season"] = SeasonConverter
+app.url_map.converters["season_type"] = SeasonTypeConverter
 
 NAV_LINKS = [
     ("home", "Home"),
@@ -70,7 +85,7 @@ def inject_layout():
         "current_year": datetime.now().year,
     }
 
-HOSTED_MISSING = "This data hasn't been published to this site yet. Try the current season, or check back after the next update."
+HOSTED_MISSING = "This isn't on the site yet. Try the current season, or check back after the next update."
 
 # Cache-key patterns (see nba_client.published_seasons) for the data behind each page.
 LEAGUE_STATS = ("league_player_stats", SEASON, "Base", "Regular Season")
@@ -105,24 +120,11 @@ def playoff_seasons():
             print(f"[WARN] playoff stats for {season} unreadable: {e}")
     return seasons
 
-def missed_playoffs(player_id: int, season: str) -> bool:
-    """
-    Hosted mode: True when the season's playoff stats are published and the player
-    isn't in them, so a missing playoff log or shot chart means "no playoff games",
-    not "not published yet".
-    """
-    if season not in (published_seasons(PLAYOFF_STATS) or []):
-        return False
-    try:
-        df = get_league_player_stats(season, "Base", "Playoffs")
-    except Exception:
-        return False
-    return int(player_id) not in set(df["PLAYER_ID"].astype(int)) if not df.empty else True
-
 def error_response(e, message, status=503):
-    """JSON error for an API route; hosted-mode misses get an explanation instead."""
+    """JSON error for a data route; data that isn't cached (hosted mode, builds) gets an explanation instead."""
     if isinstance(e, NBAUnavailable):
         return jsonify({"success": False, "error": HOSTED_MISSING, "hosted": True}), 503
+    print(f"[ERROR] {request.path}: {e}")
     return jsonify({"success": False, "error": message}), status
 
 @app.route("/")
@@ -135,7 +137,7 @@ def home():
 def privacy_policy():
     return render_template("privacy_policy.html")
 
-@app.route("/api/games-today")
+@app.route("/data/games-today.json")
 def api_games_today():
     # NBA schedules run on Eastern time, so "today" is the current date in New York.
     today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
@@ -145,7 +147,6 @@ def api_games_today():
         games = [_scoreboard_game(g, teams_df[teams_df["gameId"] == g["gameId"]]) for _, g in games_df.iterrows()]
         return jsonify({"success": True, "date": today, "games": games, "count": len(games)})
     except Exception as e:
-        print(f"[ERROR] /api/games-today: {e}")
         return error_response(e, "Unable to fetch today's games.")
 
 def _scoreboard_game(game, team_rows):
@@ -178,16 +179,14 @@ def _scoreboard_game(game, team_rows):
         "home": team(home_code),
     }
 
-@app.route("/api/league-leaders")
-def api_league_leaders():
-    """Top players per game in PTS/REB/AST for the home page."""
-    season = request.args.get("season") or current_season()
-    limit = min(request.args.get("limit", default=5, type=int), 10)
+@app.route("/data/leaders/<season:season>.json")
+def api_league_leaders(season):
+    """Top 5 players per game in PTS/REB/AST for the home page."""
+    limit = 5
 
     try:
         df = get_league_player_stats(season)
     except Exception as e:
-        print(f"[ERROR] /api/league-leaders: {e}")
         return error_response(e, "Unable to fetch league leaders.")
 
     if df is None or df.empty:
@@ -234,25 +233,27 @@ def advanced_metrics():
 @app.route("/team-trends")
 def team_trends():
     team_list = teams.get_teams()
-    seasons = season_choices(("league_team_stats", SEASON))
+    seasons = season_choices(("team_gamelog", ANY, SEASON))
     return render_template("team_trends.html", teams=team_list, seasons=seasons)
 
 @app.route("/standings")
 def standings():
     return render_template("standings.html", seasons=season_choices(("standings", SEASON)))
 
-@app.route("/api/standings")
-def api_standings():
-    season = request.args.get("season") or current_season()
+@app.route("/data/standings/<season:season>.json")
+def api_standings(season):
 
     try:
         df = get_standings(season)
     except Exception as e:
-        print(f"[ERROR] /api/standings: {e}")
         return error_response(e, "Unable to fetch standings from NBA API.")
 
     if df is None or df.empty:
         return jsonify({"success": False, "error": f"No standings for {season}."}), 404
+
+    def text(value):
+        """A text column, or None where older seasons have no value (NaN)."""
+        return str(value).strip() if pd.notna(value) else None
 
     def row(r):
         return {
@@ -263,11 +264,11 @@ def api_standings():
             "losses": int(r["LOSSES"]),
             "win_pct": round(float(r["WinPCT"]), 3),
             "games_back": float(r["ConferenceGamesBack"]),
-            "conf_record": r["ConferenceRecord"],
-            "home": r["HOME"],
-            "road": r["ROAD"],
-            "last10": r["L10"],
-            "streak": (r["strCurrentStreak"] or "").strip(),
+            "conf_record": text(r["ConferenceRecord"]),
+            "home": text(r["HOME"]),
+            "road": text(r["ROAD"]),
+            "last10": text(r["L10"]),
+            "streak": text(r["strCurrentStreak"]),
             "ppg": round(float(r["PointsPG"]), 1),
             "opp_ppg": round(float(r["OppPointsPG"]), 1),
             "diff": round(float(r["DiffPointsPG"]), 1),
@@ -284,20 +285,11 @@ def api_standings():
 def compare_players():
     return render_template("compare.html", seasons=get_seasons())
 
-@app.route("/api/team-monthly-series")
-def api_team_monthly_series():
-    team_id = request.args.get("team_id", type=int)
-    season  = request.args.get("season", default=current_season())
-
-    if not team_id:
-        return jsonify({"success": False, "error": "team_id required"}), 400
-
-    try:
-        df = get_team_gamelog_cached(team_id, season, timeout_sec=30)  # longer timeout
-    except NBAUnavailable as e:
-        return error_response(e, "")
+def team_monthly_series(team_id: int, season: str) -> dict:
+    """Win % and record by regular-season month."""
+    df = get_team_gamelog_cached(team_id, season, timeout_sec=30)  # longer timeout
     if df is None or df.empty:
-        return jsonify({"success": True, "months": [], "win_pct": [], "wins": [], "losses": []})
+        return {"months": [], "win_pct": [], "wins": [], "losses": []}
 
     df = df.copy()
     df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], format="%b %d, %Y", errors="coerce")
@@ -318,220 +310,203 @@ def api_team_monthly_series():
         wins.append(w)
         losses.append(l)
 
-    return jsonify({"success": True, "months": labels, "win_pct": values, "wins": wins, "losses": losses})
+    return {"months": labels, "win_pct": values, "wins": wins, "losses": losses}
 
-@app.route("/api/team-stats/<team_id>")
-def api_team_stats(team_id):
-    season = request.args.get("season", current_season())
+def team_stats(team_id_int: int, season: str) -> dict:
+    """Record, per-game averages, shooting, ratings and home/road splits for a team-season."""
+    if OFFLINE:
+        # The fallbacks below swallow errors and return zeros; in hosted mode a
+        # missing season should say so instead.
+        get_league_team_stats(season)
+        get_team_gamelog_cached(team_id_int, season)  # raises if not published
+
+    gl_df = get_team_gamelog_cached(team_id_int, season, timeout_sec=30)
+
+    if gl_df.empty:
+        try:
+            lgl = nbacall_retry(
+                LeagueGameLog,
+                season=season,
+                season_type_all_star="Regular Season",
+                league_id="00",
+                timeout=30,
+            ).get_data_frames()[0]
+            if lgl is not None and not lgl.empty:
+                gl_df = lgl[lgl["TEAM_ID"] == team_id_int].copy()
+            else:
+                gl_df = pd.DataFrame()
+        except Exception as e:
+            print(f"[WARN] LeagueGameLog fallback failed: {e}")
+            gl_df = pd.DataFrame()
+
+    if gl_df is not None and not gl_df.empty and "WL" in gl_df.columns:
+        wl_w = int((gl_df["WL"] == "W").sum())
+        wl_l = int((gl_df["WL"] == "L").sum())
+    else:
+        wl_w = wl_l = 0
+
+    home_w = home_l = road_w = road_l = 0
+    if gl_df is not None and not gl_df.empty and "MATCHUP" in gl_df.columns:
+        home_mask = gl_df["MATCHUP"].str.contains("vs", na=False)
+        road_mask = gl_df["MATCHUP"].str.contains("@", na=False)
+        home_w = int((gl_df[home_mask]["WL"] == "W").sum())
+        home_l = int((gl_df[home_mask]["WL"] == "L").sum())
+        road_w = int((gl_df[road_mask]["WL"] == "W").sum())
+        road_l = int((gl_df[road_mask]["WL"] == "L").sum())
+
+    ppg = rpg = apg = spg = bpg = 0.0
+    fg_pct = fg3_pct = ft_pct = 0.0
+    opp_ppg = 0.0
+    sanity_ok = False
 
     try:
-        team_id_int = int(team_id)
-        if OFFLINE:
-            # The fallbacks below swallow errors and return zeros; in hosted mode a
-            # missing season should say so instead.
-            get_league_team_stats(season)
-            get_team_gamelog_cached(team_id_int, season)  # raises if not published
+        df = get_league_team_stats(season)
+        row_df = df[df["TEAM_ID"] == team_id_int]
+        if not row_df.empty:
+            row = row_df.iloc[0]
+            ppg = float(row.get("PTS", 0.0))
+            rpg = float(row.get("REB", 0.0))
+            apg = float(row.get("AST", 0.0))
+            spg = float(row.get("STL", 0.0))
+            bpg = float(row.get("BLK", 0.0))
 
-        gl_df = get_team_gamelog_cached(team_id_int, season, timeout_sec=30)
+            plus_minus = float(row.get("PLUS_MINUS", 0.0)) if "PLUS_MINUS" in row else 0.0
+            opp_ppg = ppg - plus_minus
 
-        if gl_df.empty:
-            try:
-                lgl = nbacall_retry(
-                    LeagueGameLog,
-                    season=season,
-                    season_type_all_star="Regular Season",
-                    league_id="00",
-                    timeout=30,
-                ).get_data_frames()[0]
-                if lgl is not None and not lgl.empty:
-                    gl_df = lgl[lgl["TEAM_ID"] == team_id_int].copy()
-                else:
-                    gl_df = pd.DataFrame()
-            except Exception as e:
-                print(f"[WARN] LeagueGameLog fallback failed: {e}")
-                gl_df = pd.DataFrame()
+            fg_pct  = float(row.get("FG_PCT", 0.0)) * 100.0
+            fg3_pct = float(row.get("FG3_PCT", 0.0)) * 100.0
+            ft_pct  = float(row.get("FT_PCT", 0.0)) * 100.0
 
-        if gl_df is not None and not gl_df.empty and "WL" in gl_df.columns:
-            wl_w = int((gl_df["WL"] == "W").sum())
-            wl_l = int((gl_df["WL"] == "L").sum())
-        else:
-            wl_w = wl_l = 0
+            sanity_ok = ppg >= 90 or season < "1980-81"
+    except Exception as e:
+        print(f"[WARN] LeagueDashTeamStats failed: {e}")
 
-        home_w = home_l = road_w = road_l = 0
-        if gl_df is not None and not gl_df.empty and "MATCHUP" in gl_df.columns:
-            home_mask = gl_df["MATCHUP"].str.contains("vs", na=False)
-            road_mask = gl_df["MATCHUP"].str.contains("@", na=False)
-            home_w = int((gl_df[home_mask]["WL"] == "W").sum())
-            home_l = int((gl_df[home_mask]["WL"] == "L").sum())
-            road_w = int((gl_df[road_mask]["WL"] == "W").sum())
-            road_l = int((gl_df[road_mask]["WL"] == "L").sum())
+    if not sanity_ok and gl_df is not None and not gl_df.empty:
+        ppg = float(gl_df["PTS"].mean()) if "PTS" in gl_df.columns else 0.0
+        rpg = float(gl_df["REB"].mean()) if "REB" in gl_df.columns else 0.0
+        apg = float(gl_df["AST"].mean()) if "AST" in gl_df.columns else 0.0
+        spg = float(gl_df["STL"].mean()) if "STL" in gl_df.columns else 0.0
+        bpg = float(gl_df["BLK"].mean()) if "BLK" in gl_df.columns else 0.0
+        if "PTS" in gl_df.columns and "PLUS_MINUS" in gl_df.columns:
+            opp_ppg = float((gl_df["PTS"] - gl_df["PLUS_MINUS"]).mean())
 
-        ppg = rpg = apg = spg = bpg = 0.0
-        fg_pct = fg3_pct = ft_pct = 0.0
-        opp_ppg = 0.0
-        sanity_ok = False
+    off_rating = def_rating = net_rating = pace = 0.0
+    try:
+        em_df = get_team_estimated_metrics(season)
+        em_row = em_df[em_df["TEAM_ID"] == team_id_int]
+        if not em_row.empty:
+            em = em_row.iloc[0]
+            off_rating = float(em.get("E_OFF_RATING", 0.0))
+            def_rating = float(em.get("E_DEF_RATING", 0.0))
+            net_rating = float(em.get("E_NET_RATING", 0.0))
+            pace       = float(em.get("E_PACE", 0.0))
+    except Exception as e:
+        print(f"[WARN] TeamEstimatedMetrics failed: {e}")
 
+    home_record = f"{home_w}-{home_l}"
+    road_record = f"{road_w}-{road_l}"
+
+    if gl_df is None or gl_df.empty:
         try:
-            df = get_league_team_stats(season)
-            row_df = df[df["TEAM_ID"] == team_id_int]
-            if not row_df.empty:
-                row = row_df.iloc[0]
-                ppg = float(row.get("PTS", 0.0))
-                rpg = float(row.get("REB", 0.0))
-                apg = float(row.get("AST", 0.0))
-                spg = float(row.get("STL", 0.0))
-                bpg = float(row.get("BLK", 0.0))
-
-                plus_minus = float(row.get("PLUS_MINUS", 0.0)) if "PLUS_MINUS" in row else 0.0
-                opp_ppg = ppg - plus_minus
-
-                fg_pct  = float(row.get("FG_PCT", 0.0)) * 100.0
-                fg3_pct = float(row.get("FG3_PCT", 0.0)) * 100.0
-                ft_pct  = float(row.get("FT_PCT", 0.0)) * 100.0
-
-                sanity_ok = ppg >= 90 or season < "1980-81"
+            splits = nbacall_retry(
+                teamdashboardbygeneralsplits.TeamDashboardByGeneralSplits,
+                team_id=team_id_int,
+                season=season,
+                season_type_all_star="Regular Season",
+                timeout=30,
+            ).get_data_frames()
+            by_loc = splits[1] if len(splits) > 1 else None
+            if by_loc is not None and not by_loc.empty:
+                home_df = by_loc[by_loc["GROUP_VALUE"] == "Home"]
+                road_df = by_loc[by_loc["GROUP_VALUE"] == "Road"]
+                if not home_df.empty:
+                    home_record = f"{int(home_df['W'].iloc[0])}-{int(home_df['L'].iloc[0])}"
+                if not road_df.empty:
+                    road_record = f"{int(road_df['W'].iloc[0])}-{int(road_df['L'].iloc[0])}"
         except Exception as e:
-            print(f"[WARN] LeagueDashTeamStats failed: {e}")
+            print(f"[WARN] GeneralSplits failed: {e}")
 
-        if not sanity_ok and gl_df is not None and not gl_df.empty:
-            ppg = float(gl_df["PTS"].mean()) if "PTS" in gl_df.columns else 0.0
-            rpg = float(gl_df["REB"].mean()) if "REB" in gl_df.columns else 0.0
-            apg = float(gl_df["AST"].mean()) if "AST" in gl_df.columns else 0.0
-            spg = float(gl_df["STL"].mean()) if "STL" in gl_df.columns else 0.0
-            bpg = float(gl_df["BLK"].mean()) if "BLK" in gl_df.columns else 0.0
-            if "PTS" in gl_df.columns and "PLUS_MINUS" in gl_df.columns:
-                opp_ppg = float((gl_df["PTS"] - gl_df["PLUS_MINUS"]).mean())
+    stats_dict = {
+        "W": wl_w,
+        "L": wl_l,
+        "W_PCT": round((wl_w / max(1, (wl_w + wl_l))), 3),
+        "PPG": round(ppg, 1),
+        "RPG": round(rpg, 1),
+        "APG": round(apg, 1),
+        "SPG": round(spg, 1),
+        "BPG": round(bpg, 1),
+        "FG_PCT": round(fg_pct, 1),
+        "FG3_PCT": round(fg3_pct, 1),
+        "FT_PCT": round(ft_pct, 1),
+        "OFF_RATING": round(off_rating, 1),
+        "DEF_RATING": round(def_rating, 1),
+        "NET_RATING": round(net_rating, 1),
+        "PACE": round(pace, 1),
+        "OPP_PPG": round(opp_ppg, 1),
+        "HOME_RECORD": home_record,
+        "ROAD_RECORD": road_record,
+    }
 
-        off_rating = def_rating = net_rating = pace = 0.0
-        try:
-            em_df = get_team_estimated_metrics(season)
-            em_row = em_df[em_df["TEAM_ID"] == team_id_int]
-            if not em_row.empty:
-                em = em_row.iloc[0]
-                off_rating = float(em.get("E_OFF_RATING", 0.0))
-                def_rating = float(em.get("E_DEF_RATING", 0.0))
-                net_rating = float(em.get("E_NET_RATING", 0.0))
-                pace       = float(em.get("E_PACE", 0.0))
-        except Exception as e:
-            print(f"[WARN] TeamEstimatedMetrics failed: {e}")
+    return stats_dict
 
-        home_record = f"{home_w}-{home_l}"
-        road_record = f"{road_w}-{road_l}"
-
-        if gl_df is None or gl_df.empty:
-            try:
-                splits = nbacall_retry(
-                    teamdashboardbygeneralsplits.TeamDashboardByGeneralSplits,
-                    team_id=team_id_int,
-                    season=season,
-                    season_type_all_star="Regular Season",
-                    timeout=30,
-                ).get_data_frames()
-                by_loc = splits[1] if len(splits) > 1 else None
-                if by_loc is not None and not by_loc.empty:
-                    home_df = by_loc[by_loc["GROUP_VALUE"] == "Home"]
-                    road_df = by_loc[by_loc["GROUP_VALUE"] == "Road"]
-                    if not home_df.empty:
-                        home_record = f"{int(home_df['W'].iloc[0])}-{int(home_df['L'].iloc[0])}"
-                    if not road_df.empty:
-                        road_record = f"{int(road_df['W'].iloc[0])}-{int(road_df['L'].iloc[0])}"
-            except Exception as e:
-                print(f"[WARN] GeneralSplits failed: {e}")
-
-        stats_dict = {
-            "W": wl_w,
-            "L": wl_l,
-            "W_PCT": round((wl_w / max(1, (wl_w + wl_l))), 3),
-            "PPG": round(ppg, 1),
-            "RPG": round(rpg, 1),
-            "APG": round(apg, 1),
-            "SPG": round(spg, 1),
-            "BPG": round(bpg, 1),
-            "FG_PCT": round(fg_pct, 1),
-            "FG3_PCT": round(fg3_pct, 1),
-            "FT_PCT": round(ft_pct, 1),
-            "OFF_RATING": round(off_rating, 1),
-            "DEF_RATING": round(def_rating, 1),
-            "NET_RATING": round(net_rating, 1),
-            "PACE": round(pace, 1),
-            "OPP_PPG": round(opp_ppg, 1),
-            "HOME_RECORD": home_record,
-            "ROAD_RECORD": road_record,
+def roster_leaders(team_id: int, season: str) -> dict:
+    """The team's top scorer, rebounder, playmaker and most efficient player per game."""
+    dfs = get_team_player_dashboard(team_id, season)
+    stats = dfs[1] if len(dfs) > 1 else pd.DataFrame()
+    if stats is None or stats.empty:
+        return {
+            "top_scorer": {"name": "N/A", "stat": 0},
+            "top_rebounder": {"name": "N/A", "stat": 0},
+            "top_playmaker": {"name": "N/A", "stat": 0},
+            "most_efficient": {"name": "N/A", "stat": 0},
         }
 
-        return jsonify({"success": True, "stats": stats_dict})
+    stats = stats.copy()
+    stats["EFF_RAW"] = stats.apply(calculate_efficiency, axis=1)
+    stats["EFF"] = stats.apply(lambda r: (r["EFF_RAW"] / (r.get("GP", 1) or 1)), axis=1)
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return error_response(e, f"Server error fetching team stats: {str(e)}", 500)
+    def build_player_dict(row, stat_col):
+        if row is None:
+            return {"name": "N/A", "stat": 0}
+        gp = row.get("GP") or 1
+        total = row.get(stat_col, 0)
+        per_game = total / gp
+        return {
+            "name": row.get("PLAYER_NAME", "N/A"),
+            "player_id": int(row["PLAYER_ID"]) if row.get("PLAYER_ID") is not None else None,
+            "stat": round(per_game, 1),
+        }
 
-@app.route("/api/roster-analysis/<team_id>")
-def api_roster_analysis(team_id):
-    season = request.args.get("season", current_season())
+    top_scorer = stats.sort_values("PTS", ascending=False).iloc[0] if not stats.empty else None
+    top_rebounder = stats.sort_values("REB", ascending=False).iloc[0] if not stats.empty else None
+    top_playmaker = stats.sort_values("AST", ascending=False).iloc[0] if not stats.empty else None
+    most_efficient = stats.sort_values("EFF", ascending=False).iloc[0] if not stats.empty else None
 
+    return {
+        "top_scorer": build_player_dict(top_scorer, "PTS"),
+        "top_rebounder": build_player_dict(top_rebounder, "REB"),
+        "top_playmaker": build_player_dict(top_playmaker, "AST"),
+        # build_player_dict divides by GP, so pass the season total (EFF is already per game)
+        "most_efficient": build_player_dict(most_efficient, "EFF_RAW"),
+    }
+
+@app.route("/data/teams/<season:season>/<int:team_id>.json")
+def api_team(season, team_id):
+    """Everything the Teams page shows for one team-season."""
     try:
-        dfs = get_team_player_dashboard(team_id, season)
-        stats = dfs[1] if len(dfs) > 1 else pd.DataFrame()
-        if stats is None or stats.empty:
-            return jsonify(
-                {
-                    "success": True,
-                    "top_scorer": {"name": "N/A", "stat": 0},
-                    "top_rebounder": {"name": "N/A", "stat": 0},
-                    "top_playmaker": {"name": "N/A", "stat": 0},
-                    "most_efficient": {"name": "N/A", "stat": 0},
-                }
-            )
-
-        stats = stats.copy()
-        stats["EFF_RAW"] = stats.apply(calculate_efficiency, axis=1)
-        stats["EFF"] = stats.apply(lambda r: (r["EFF_RAW"] / (r.get("GP", 1) or 1)), axis=1)
-
-        def build_player_dict(row, stat_col):
-            if row is None:
-                return {"name": "N/A", "stat": 0}
-            gp = row.get("GP") or 1
-            total = row.get(stat_col, 0)
-            per_game = total / gp
-            return {
-                "name": row.get("PLAYER_NAME", "N/A"),
-                "player_id": int(row["PLAYER_ID"]) if row.get("PLAYER_ID") is not None else None,
-                "stat": round(per_game, 1),
-            }
-
-        top_scorer = stats.sort_values("PTS", ascending=False).iloc[0] if not stats.empty else None
-        top_rebounder = stats.sort_values("REB", ascending=False).iloc[0] if not stats.empty else None
-        top_playmaker = stats.sort_values("AST", ascending=False).iloc[0] if not stats.empty else None
-        most_efficient = stats.sort_values("EFF", ascending=False).iloc[0] if not stats.empty else None
-
-        return jsonify(
-            {
-                "success": True,
-                "top_scorer": build_player_dict(top_scorer, "PTS"),
-                "top_rebounder": build_player_dict(top_rebounder, "REB"),
-                "top_playmaker": build_player_dict(top_playmaker, "AST"),
-                # build_player_dict divides by GP, so pass the season total (EFF is already per game)
-                "most_efficient": build_player_dict(most_efficient, "EFF_RAW"),
-            }
-        )
-
+        return jsonify({
+            "success": True,
+            "stats": team_stats(team_id, season),
+            "monthly": team_monthly_series(team_id, season),
+            "roster": roster_leaders(team_id, season),
+        })
     except Exception as e:
-        print(f"[ERROR] /api/roster-analysis/{team_id}: {e}")
-        return error_response(e, str(e), 500)
+        return error_response(e, "Unable to load team data.", 500)
 
-@app.route("/api/players")
-def get_players():
+@app.route("/data/players/<season:season>/<season_type:season_type>.json")
+def get_players(season, season_type):
+    """Every player's season stats and metrics, highest scorers first; pages filter and sort."""
     try:
-        season = request.args.get("season", current_season())
-        team_code = request.args.get("team", "all")
-        position_filter = request.args.get("position", "all")
-        sort_by = request.args.get("sort_by", "PTS")
-        search = normalize_name(request.args.get("search", ""))
-        season_type = parse_season_type(request.args.get("season_type"))
-
-        # Compute everything on the full league table first, then filter, so that
-        # league-relative metrics don't change with the search/team/position filter.
         df = get_league_player_stats(season, season_type=season_type).copy()
 
         # Official NBA advanced metrics (fractions, e.g. 0.312) replace local estimates.
@@ -549,13 +524,6 @@ def get_players():
 
         df["TS_PCT"] = df.apply(lambda r: calculate_true_shooting(r), axis=1)
         df["EFF"] = df.apply(lambda r: calculate_efficiency(r) / (r["GP"] or 1), axis=1)
-
-        if search:
-            df = df[df["PLAYER_NAME"].map(normalize_name).str.contains(search, regex=False)]
-        if team_code != "all":
-            df = df[df["TEAM_ABBREVIATION"] == team_code]
-        if position_filter != "all":
-            df = df[df["POSITION"].str.contains(position_filter, regex=False, na=False)]
 
         display_columns = [
             "PLAYER_ID",
@@ -587,8 +555,7 @@ def get_players():
         display_columns = [c for c in display_columns if c in df.columns]
         df_display = df[display_columns].fillna(0)
 
-        if sort_by in df_display.columns:
-            df_display = df_display.sort_values(by=sort_by, ascending=False)
+        df_display = df_display.sort_values(by="PTS", ascending=False)
 
         players_data = df_display.to_dict("records")
         for p in players_data:
@@ -623,23 +590,20 @@ def get_players():
         )
 
     except Exception as e:
-        print("Error in /api/players:", e)
         return error_response(e, "Unable to fetch player data from NBA API. Please try again later.")
 
-@app.route("/api/player/<int:player_id>")
+@app.route("/data/player/<int:player_id>.json")
 def get_player_detail(player_id: int):
     """
     Returns:
       - player_info: dict from CommonPlayerInfo (current team info)
-      - seasons_regular: list[dict] SeasonTotalsRegularSeason rows (newest->oldest)
+      - seasons_regular / seasons_postseason: list[dict] season rows with derived
+        stats (newest->oldest; a traded player has a row per team plus "TOT")
       - career_regular: list[dict] CareerTotalsRegularSeason (1 row if available)
       - available_seasons: list[str] newest->oldest
-      - selected_season: dict for the requested ?season= (per-season team + derived stats)
+      - gamelog_seasons: see gamelog_seasons()
     """
     try:
-        # Optional season query (e.g., "2018-19")
-        req_season = request.args.get("season")
-
         # 0) Build a fast TEAM_ID -> names map for accurate per-season team labeling
         team_map = {}
         try:
@@ -654,7 +618,8 @@ def get_player_detail(player_id: int):
 
         # 1) Player bio
         info_df = get_player_info(player_id)
-        info = info_df.to_dict("records")[0] if len(info_df) > 0 else {}
+        # Missing bio fields (undrafted, no school) are NaN, which isn't valid JSON.
+        info = info_df.astype(object).where(info_df.notna(), None).to_dict("records")[0] if len(info_df) > 0 else {}
 
         # 2) Player profile (regular season tables)
         norm = get_player_profile(player_id)
@@ -741,13 +706,6 @@ def get_player_detail(player_id: int):
         seasons_regular = [enrich(r) for r in seasons_regular]
         seasons_postseason = [enrich(r) for r in seasons_postseason]
 
-        # Determine selected_season
-        selected = None
-        if req_season:
-            selected = next((r for r in seasons_regular if r.get("SEASON_ID") == req_season), None)
-        if not selected and seasons_regular:
-            selected = seasons_regular[0]
-
         return jsonify({
             "success": True,
             "gamelog_seasons": gamelog_seasons(player_id),
@@ -756,39 +714,27 @@ def get_player_detail(player_id: int):
             "seasons_postseason": seasons_postseason,
             "career_regular": career_regular,
             "available_seasons": available_seasons,
-            "selected_season": selected,
         })
 
     except Exception as e:
-        print(f"[ERROR] /api/player/{player_id}: {e}")
-        return error_response(e, str(e), 500)
+        return error_response(e, "Unable to load this player.", 500)
 
 def gamelog_seasons(player_id: int):
     """
     {"regular": [...], "playoffs": [...]}: seasons whose game logs this player's page
-    can show, or None when any season can be requested. Playoffs include every season
-    with published playoff stats: a player missing from them simply had no playoff games.
+    can show, or None when any season can be requested.
     """
     regular = published_seasons(("player_gamelog", player_id, SEASON, "Regular Season"))
     if regular is None:
         return None
-    playoffs = set(published_seasons(("player_gamelog", player_id, SEASON, "Playoffs")))
-    playoffs.update(playoff_seasons())
-    return {"regular": regular, "playoffs": sorted(playoffs, reverse=True)}
+    return {"regular": regular,
+            "playoffs": published_seasons(("player_gamelog", player_id, SEASON, "Playoffs"))}
 
-@app.route("/api/player/<int:player_id>/gamelog")
-def api_player_gamelog(player_id: int):
-    season = request.args.get("season") or current_season()
-    season_type = parse_season_type(request.args.get("season_type"))
-
+@app.route("/data/player/<int:player_id>/gamelog/<season:season>/<season_type:season_type>.json")
+def api_player_gamelog(player_id: int, season, season_type):
     try:
         df = get_player_gamelog(player_id, season, season_type)
-    except NBAUnavailable as e:
-        if season_type != "Playoffs" or not missed_playoffs(player_id, season):
-            return error_response(e, "")
-        df = None
     except Exception as e:
-        print(f"[ERROR] /api/player/{player_id}/gamelog: {e}")
         return error_response(e, "Unable to fetch game log from NBA API.")
 
     if df is None or df.empty:
@@ -807,24 +753,16 @@ def api_player_gamelog(player_id: int):
 
     return jsonify({"success": True, "season": season, "season_type": season_type, "games": records})
 
-@app.route("/api/shot-chart/<int:player_id>")
-def api_shot_chart(player_id: int):
-    season = request.args.get("season", current_season())
-    season_type = parse_season_type(request.args.get("season_type"))
-
+@app.route("/data/player/<int:player_id>/shots/<season:season>/<season_type:season_type>.json")
+def api_shot_chart(player_id: int, season, season_type):
+    """Every field-goal attempt; an empty list when the player took none."""
     try:
         df = get_shot_chart(player_id, season, season_type)
-    except NBAUnavailable as e:
-        if season_type != "Playoffs" or not missed_playoffs(player_id, season):
-            return error_response(e, "")
-        df = None
     except Exception as e:
-        print(f"[ERROR] /api/shot-chart/{player_id}: {e}")
         return error_response(e, "Unable to fetch shot data from NBA API.")
 
     if df is None or df.empty:
-        label = "playoff shots" if season_type == "Playoffs" else "shot data"
-        return jsonify({"success": False, "error": f"No {label} for this player in {season}."}), 404
+        return jsonify({"success": True, "shots": [], "count": 0})
 
     columns = [
         "LOC_X",
@@ -845,19 +783,11 @@ def api_shot_chart(player_id: int):
 def player_detail(player_id: int):
     return render_template("player_detail.html", player_id=player_id, seasons=get_seasons())
 
-@app.route("/api/export/players")
-def export_players():
+@app.route("/data/players/<season:season>/<season_type:season_type>.csv")
+def export_players(season, season_type):
+    """League player stats as a CSV download, highest scorers first."""
     try:
-        season = request.args.get("season", current_season())
-        team_code = request.args.get("team", "all")
-        sort_by = request.args.get("sort_by", "PTS")
-        season_type = parse_season_type(request.args.get("season_type"))
-
-        df = get_league_player_stats(season, season_type=season_type)
-        if team_code != "all":
-            df = df[df["TEAM_ABBREVIATION"] == team_code]
-        if sort_by in df.columns:
-            df = df.sort_values(by=sort_by, ascending=False)
+        df = get_league_player_stats(season, season_type=season_type).sort_values(by="PTS", ascending=False)
 
         output = io.StringIO()
         df.to_csv(output, index=False)
@@ -869,11 +799,10 @@ def export_players():
             mem,
             mimetype="text/csv",
             as_attachment=True,
-            download_name=f"nba_players_{season}_{datetime.now().strftime('%Y%m%d')}.csv",
+            download_name=f"nba_players_{season}.csv",
         )
     except Exception as e:
-        print(f"Error in /api/export/players: {e}")
-        return jsonify({"error": str(e)}), 500
+        return error_response(e, "Unable to export player stats.", 500)
 
 def normalize_name(text: str) -> str:
     """Lowercase, strip accents and punctuation: "P.J. Dončić-Smith" -> "pj doncic smith"."""
@@ -888,99 +817,58 @@ def searchable_players():
     """(player, normalized full name) pairs from nba_api's static player list."""
     return [(p, normalize_name(p["full_name"])) for p in players.get_players()]
 
-@app.route("/api/search-players")
-def search_players():
-    try:
-        # ?ids=2544,201939 looks players up by id (used to restore shared links)
-        ids = request.args.get("ids")
-        if ids:
-            found = []
-            for pid in ids.split(",")[:10]:
-                p = players.find_player_by_id(int(pid)) if pid.strip().isdigit() else None
-                if p:
-                    found.append({"id": p["id"], "name": p["full_name"], "is_active": p["is_active"]})
-            return jsonify({"success": True, "players": found})
+@app.route("/data/player-index.json")
+def api_player_index():
+    """
+    Players to search, as {id, name, is_active, key} with key the normalize_name() form
+    pages match against. In hosted mode, only players whose pages were published.
+    """
+    published = published_player_ids()
+    return jsonify({
+        "success": True,
+        "players": [
+            {"id": p["id"], "name": p["full_name"], "is_active": p["is_active"], "key": key}
+            for p, key in searchable_players()
+            if published is None or p["id"] in published
+        ],
+    })
 
-        query = normalize_name(request.args.get("q", ""))
-        if not query:
-            return jsonify({"success": True, "players": []})
-
-        published = published_player_ids()  # hosted mode: only players with a page here
-        ranked = []
-        for p, name in searchable_players():
-            if query not in name or (published is not None and p["id"] not in published):
-                continue
-            # Names (or a first/last name) that start with the query rank first, then active players.
-            word_prefix = (" " + name).find(" " + query) != -1
-            ranked.append(((not word_prefix, not p["is_active"], name), p))
-        ranked.sort(key=lambda item: item[0])
-
-        matching = [
-            {"id": p["id"], "name": p["full_name"], "is_active": p["is_active"]}
-            for _, p in ranked[:10]
-        ]
-        return jsonify({"success": True, "players": matching})
-    except Exception as e:
-        print(f"Error in /api/search-players: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("not_found.html"), 404
 
 # ------------------------------------------------------------------------------
-# Publishing: a fetcher (where stats.nba.com is reachable) sends cache entries to a
-# hosted copy running with COURTVISION_OFFLINE=1. See publish.py.
+# Static site: build.py saves every page and data file the cache can fill, and
+# deploys the result to Cloudflare Pages.
 # ------------------------------------------------------------------------------
-MAX_INGEST_BYTES = 256 * 1024 * 1024  # decompressed size cap per request
+@app.cli.command("build")
+@click.option("--out", default=None, help="Output folder (default: dist/).")
+def build_command(out):
+    """Build the static site from the data already in the cache (never calls the NBA API)."""
+    import build
 
-@app.route("/api/admin/cache-entries", methods=["POST"])
-def api_ingest_cache_entries():
-    token = os.environ.get("COURTVISION_PUBLISH_TOKEN", "")
-    if not token:
-        return jsonify({"success": False, "error": "Not found"}), 404  # publishing disabled
-    supplied = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not hmac.compare_digest(supplied.encode(), token.encode()):
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    if nba_client._DISK is None:
-        return jsonify({"success": False, "error": "Disk cache is disabled on this host"}), 503
+    summary = build.build_site(out or build.DIST_DIR)
+    click.echo(f"Built {summary['files']} files in {summary['seconds']:.0f}s -> {summary['out']}")
+    click.echo(f"  {len(summary['skipped'])} URLs had no data (e.g. {', '.join(summary['skipped'][:3]) or '-'})")
+    for url, problem in summary["invalid"].items():
+        click.echo(f"  left out, invalid JSON: {url}: {problem}", err=True)
 
-    try:
-        raw = request.get_data()
-        if request.headers.get("Content-Encoding") == "gzip":
-            inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
-            raw = inflater.decompress(raw, MAX_INGEST_BYTES)
-            if inflater.unconsumed_tail:
-                return jsonify({"success": False, "error": "Upload too large"}), 413
-        entries = json.loads(raw)
-        if not isinstance(entries, list):
-            raise ValueError("expected a list of entries")
+@app.cli.command("preview")
+@click.option("--port", default=8080, help="Port to serve on.")
+def preview_command(port):
+    """Serve the built site (dist/) locally, the way Cloudflare Pages will."""
+    import build
 
-        stored = 0
-        latest_allowed = time.time() + 300
-        for item in entries:
-            key, ts = item["key"], float(item["ts"])
-            if not isinstance(key, str) or not key.startswith("(") or len(key) > 300 or ts > latest_allowed:
-                raise ValueError(f"invalid entry {str(key)[:60]}")
-            # Decode then re-encode: only values the JSON codec understands are stored.
-            nba_client._DISK.put_raw(key, ts, nba_client.dumps_value(nba_client.decode_value(item["value"])))
-            stored += 1
-    except (ValueError, KeyError, TypeError, zlib.error) as e:
-        return jsonify({"success": False, "error": f"Bad upload: {e}"}), 400
+    build.preview(port=port)
 
-    nba_client._PUBLISHED["ts"] = 0.0  # re-read the published keys on next use
-    return jsonify({"success": True, "stored": stored})
-
-@app.cli.command("publish")
-@click.option("--url", required=True, help="Base URL of the hosted site, e.g. https://courtvision.example.com")
+@app.cli.command("update")
 @click.option("--season", default=None, help="Season like 2025-26 (default: the current season).")
 @click.option("--players", is_flag=True, help="Also fetch every active player's pages (nightly; ~4 requests per player).")
-@click.option("--live", is_flag=True, help="Only refresh today's scoreboard (cheap; for every few minutes).")
-@click.option("--full", is_flag=True, help="Resend all cached entries, not just new ones (for a fresh host).")
-def publish_command(url, season, players, live, full):
-    """Fetch NBA data here and publish it to a hosted site (token: COURTVISION_PUBLISH_TOKEN)."""
-    import publish
-
-    token = os.environ.get("COURTVISION_PUBLISH_TOKEN")
-    if not token:
-        raise click.UsageError("Set COURTVISION_PUBLISH_TOKEN to the hosted site's publish token.")
+@click.option("--live", is_flag=True, help="Only refresh today's scoreboard (cheap; every ~10 minutes).")
+@click.option("--no-deploy", is_flag=True, help="Build dist/ but don't deploy it.")
+def update_command(season, players, live, no_deploy):
+    """Fetch NBA data, rebuild the static site, and deploy it if anything changed."""
+    import build
 
     started = time.time()
     last_report = [0.0]
@@ -996,8 +884,7 @@ def publish_command(url, season, players, live, full):
     for name, error in list(result["failed"].items())[:10]:
         click.echo(f"  failed: {name}: {error}", err=True)
 
-    summary = publish.publish(url, token, full=full, echo=click.echo)
-    click.echo(f"Published {summary['sent']} entries to {url} (through {summary['published_through']})")
+    click.echo(build.build_and_deploy(deploy_site=not no_deploy))
 
 @app.cli.command("warm-cache")
 @click.option("--season", default=None, help="Season like 2025-26 (default: the current season).")

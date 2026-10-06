@@ -1,4 +1,3 @@
-import gzip
 import json
 import os
 import re
@@ -11,8 +10,8 @@ from unittest import mock
 import pandas as pd
 
 import app as app_module
+import build
 import nba_client
-import publish
 from metrics import calculate_efficiency, calculate_true_shooting
 
 
@@ -105,12 +104,15 @@ class DiskCacheTest(unittest.TestCase):
         self.disk.set("k", time.time() - 3600, "old")
         self.assertEqual(nba_client.cached("k", 60, mock.Mock(side_effect=TimeoutError)), "old")
 
-    def test_prune_removes_old_entries(self):
-        self.disk.set("old", time.time() - 10 * 24 * 3600, 1)
-        self.disk.set("new", time.time(), 2)
-        self.disk.prune(7 * 24 * 3600)
-        self.assertIsNone(self.disk.get("old"))
-        self.assertEqual(self.disk.get("new")[1], 2)
+    def test_prune_drops_old_scoreboards_but_keeps_season_data(self):
+        long_ago = time.time() - 400 * 24 * 3600
+        self.disk.set(("scoreboard", "2025-01-15"), long_ago, 1)
+        self.disk.set(("standings", "2024-25"), long_ago, 2)
+        self.disk.set(("scoreboard", "2026-10-05"), time.time(), 3)
+        self.disk.prune_scoreboards(7 * 24 * 3600)
+        self.assertIsNone(self.disk.get(("scoreboard", "2025-01-15")))
+        self.assertEqual(self.disk.get(("standings", "2024-25"))[1], 2)
+        self.assertEqual(self.disk.get(("scoreboard", "2026-10-05"))[1], 3)
 
 
 class CodecTest(unittest.TestCase):
@@ -139,19 +141,23 @@ class CodecTest(unittest.TestCase):
             nba_client.dumps_value(object())
 
 
-class HostedModeTest(unittest.TestCase):
-    """Publishing into a host that runs with COURTVISION_OFFLINE=1."""
+def _standings_frame():
+    return pd.DataFrame([{"TeamID": 1, "TeamCity": "Test", "TeamName": "Team", "Conference": "East",
+                          "PlayoffRank": 1, "WINS": 50, "LOSSES": 32, "WinPCT": 0.61, "ConferenceGamesBack": 0.0,
+                          "ConferenceRecord": "30-22", "HOME": "25-16", "ROAD": "25-16", "L10": "6-4",
+                          "strCurrentStreak": "W 1", "PointsPG": 115.0, "OppPointsPG": 110.0, "DiffPointsPG": 5.0}])
 
-    TOKEN = "test-token-for-unit-tests"
+
+class PublishedDataTestCase(unittest.TestCase):
+    """Serving only what's in the cache (COURTVISION_OFFLINE=1, and every build)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "host.sqlite3"))
+        self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "cache.sqlite3"))
         for patcher in (mock.patch.object(nba_client, "_DISK", self.disk),
                         mock.patch.object(nba_client, "OFFLINE", True),
-                        mock.patch.object(app_module, "OFFLINE", True),
-                        mock.patch.dict(os.environ, {"COURTVISION_PUBLISH_TOKEN": self.TOKEN})):
+                        mock.patch.object(app_module, "OFFLINE", True)):
             patcher.start()
             self.addCleanup(patcher.stop)
         nba_client._CACHE.clear()
@@ -159,47 +165,30 @@ class HostedModeTest(unittest.TestCase):
         self.client = app_module.app.test_client()
 
     def put(self, key, value):
-        """Publish one entry straight into the host's cache."""
-        self.disk.put_raw(repr(key), time.time(), nba_client.dumps_value(value))
+        """Store one entry in the cache, as a fetch would."""
+        self.disk.set(key, time.time(), value)
         nba_client._PUBLISHED["ts"] = 0.0
 
-    def upload(self, entries, token=TOKEN):
-        body = gzip.compress(json.dumps(entries).encode())
-        return self.client.post("/api/admin/cache-entries", data=body,
-                                headers={"Authorization": f"Bearer {token}", "Content-Encoding": "gzip"})
+    def put_player(self, pid, season="2025-26"):
+        self.put(("player_info", pid), pd.DataFrame([{"PERSON_ID": pid, "DISPLAY_FIRST_LAST": "Test Player",
+                                                       "DRAFT_NUMBER": float("nan")}]))
+        self.put(("player_profile", pid), {"SeasonTotalsRegularSeason": [
+            {"SEASON_ID": season, "TEAM_ID": 1, "GP": 10, "MIN": 300.0, "PTS": 200}]})
 
-    def standings_entry(self):
-        df = pd.DataFrame([{"TeamID": 1, "TeamCity": "Test", "TeamName": "Team", "Conference": "East",
-                            "PlayoffRank": 1, "WINS": 50, "LOSSES": 32, "WinPCT": 0.61, "ConferenceGamesBack": 0.0,
-                            "ConferenceRecord": "30-22", "HOME": "25-16", "ROAD": "25-16", "L10": "6-4",
-                            "strCurrentStreak": "W 1", "PointsPG": 115.0, "OppPointsPG": 110.0, "DiffPointsPG": 5.0}])
-        return {"key": repr(("standings", "2024-25")), "ts": time.time(),
-                "value": nba_client.encode_value(df)}
 
-    def test_unpublished_data_explains_itself(self):
-        resp = self.client.get("/api/standings?season=2024-25")
+class PublishedDataTest(PublishedDataTestCase):
+    def test_missing_data_explains_itself(self):
+        resp = self.client.get("/data/standings/2024-25.json")
         self.assertEqual(resp.status_code, 503)
         self.assertTrue(resp.get_json()["hosted"])
 
-    def test_unpublished_team_log_is_not_reported_as_an_empty_season(self):
-        resp = self.client.get("/api/team-monthly-series?team_id=1&season=2024-25")
-        self.assertEqual(resp.status_code, 503)
+    def test_missing_team_log_is_not_reported_as_an_empty_season(self):
+        self.assertEqual(self.client.get("/data/teams/2024-25/1.json").status_code, 503)
 
-    def test_published_data_is_served(self):
-        self.assertEqual(self.upload([self.standings_entry()]).get_json()["stored"], 1)
-        data = self.client.get("/api/standings?season=2024-25").get_json()
+    def test_cached_data_is_served(self):
+        self.put(("standings", "2024-25"), _standings_frame())
+        data = self.client.get("/data/standings/2024-25.json").get_json()
         self.assertEqual(data["east"][0]["wins"], 50)
-
-    def test_requires_the_token(self):
-        self.assertEqual(self.upload([self.standings_entry()], token="wrong").status_code, 401)
-        with mock.patch.dict(os.environ, {"COURTVISION_PUBLISH_TOKEN": ""}):
-            self.assertEqual(self.upload([self.standings_entry()]).status_code, 404)
-
-    def test_rejects_malformed_entries(self):
-        bad = self.standings_entry() | {"key": "__import__('os')"}
-        self.assertEqual(self.upload([bad]).status_code, 400)
-        self.assertEqual(self.upload([self.standings_entry() | {"value": {"__df__": "not json"}}]).status_code, 400)
-
 
     def test_pages_offer_only_published_seasons(self):
         self.put(("standings", "2023-24"), pd.DataFrame())
@@ -212,10 +201,10 @@ class HostedModeTest(unittest.TestCase):
         with app_module.app.test_request_context():
             self.assertEqual(app_module.current_season(), "2024-25")
 
-    def test_search_finds_only_published_players(self):
+    def test_player_index_lists_only_published_players(self):
         self.put(("player_profile", 2544), {})
-        names = [p["name"] for p in self.client.get("/api/search-players?q=james").get_json()["players"]]
-        self.assertEqual(names, ["LeBron James"])
+        players = self.client.get("/data/player-index.json").get_json()["players"]
+        self.assertEqual([p["name"] for p in players], ["LeBron James"])
 
     def test_playoffs_offered_only_once_they_have_games(self):
         frames = _league_frames()
@@ -223,40 +212,61 @@ class HostedModeTest(unittest.TestCase):
         self.put(("league_player_stats", "2025-26", "Base", "Playoffs"), frames["Base"].iloc[0:0])
         self.assertEqual(app_module.playoff_seasons(), ["2024-25"])
 
-    def test_player_missing_from_published_playoffs_had_no_playoff_games(self):
-        self.put(("league_player_stats", "2024-25", "Base", "Playoffs"), _league_frames()["Base"])
-        url = "/api/player/{}/gamelog?season=2024-25&season_type=playoffs"
-        self.assertEqual(self.client.get(url.format(999)).get_json()["games"], [])
-        # A playoff player whose log wasn't published is reported as unpublished.
-        self.assertEqual(self.client.get(url.format(1)).status_code, 503)
-        self.assertEqual(self.client.get("/api/shot-chart/999?season=2024-25&season_type=playoffs").status_code, 404)
-
-    def test_player_api_lists_published_game_log_seasons(self):
+    def test_player_lists_published_game_log_seasons(self):
         self.put(("player_gamelog", 1, "2025-26", "Regular Season"), pd.DataFrame())
-        self.put(("league_player_stats", "2024-25", "Base", "Playoffs"), _league_frames()["Base"])
+        self.put(("player_gamelog", 1, "2024-25", "Playoffs"), pd.DataFrame())
         self.assertEqual(app_module.gamelog_seasons(1), {"regular": ["2025-26"], "playoffs": ["2024-25"]})
 
 
-class PublishTest(unittest.TestCase):
+class BuildTest(PublishedDataTestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "fetcher.sqlite3"))
-        for patcher in (mock.patch.object(nba_client, "_DISK", self.disk),
-                        mock.patch.object(publish, "STATE_PATH", os.path.join(self.tmp.name, "state.json"))):
+        super().setUp()
+        self.out = os.path.join(self.tmp.name, "dist")
+        for patcher in (mock.patch.object(build, "STATE_PATH", os.path.join(self.tmp.name, "state.json")),
+                        mock.patch.object(build, "LOCK_PATH", os.path.join(self.tmp.name, "build.lock"))):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def test_sends_only_entries_newer_than_the_last_publish(self):
-        self.disk.set(("a",), 100.0, 1)
-        ok = mock.Mock(status_code=200, json=mock.Mock(return_value={"stored": 1}))
-        with mock.patch.object(publish.requests, "post", return_value=ok) as post:
-            publish.publish("http://host", "t", echo=lambda *_: None)
-            self.disk.set(("b",), 200.0, 2)
-            publish.publish("http://host", "t", echo=lambda *_: None)
-        sent = [json.loads(gzip.decompress(c.kwargs["data"])) for c in post.call_args_list]
-        self.assertEqual([[e["key"] for e in batch] for batch in sent], [["('a',)"], ["('b',)"]])
-        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer t")
+    def read(self, path):
+        with open(os.path.join(self.out, path), "rb") as f:
+            return f.read()
+
+    def test_saves_pages_and_data_at_their_urls(self):
+        self.put(("standings", "2024-25"), _standings_frame())
+        self.put_player(1)
+        self.put(("shot_chart", 1, "2025-26", "Playoffs"), pd.DataFrame())
+        summary = build.build_site(self.out)
+
+        self.assertIn(b"<nav>", self.read("standings.html"))
+        self.assertIn(b"<nav>", self.read("index.html"))
+        self.assertIn(b"<nav>", self.read("player/1.html"))
+        self.assertEqual(json.loads(self.read("data/standings/2024-25.json"))["east"][0]["wins"], 50)
+        player = json.loads(self.read("data/player/1.json"))
+        self.assertEqual(player["available_seasons"], ["2025-26"])
+        self.assertIsNone(player["player_info"]["DRAFT_NUMBER"])  # undrafted: NaN -> null
+        self.assertEqual(json.loads(self.read("data/player/1/shots/2025-26/playoffs.json"))["shots"], [])
+        self.assertIn(b"Page not found", self.read("404.html"))
+        self.assertTrue(os.path.exists(os.path.join(self.out, "static", "js", "site-data.js")))
+        # Today's scoreboard was never fetched: no file, so the page reports it missing.
+        self.assertIn("/data/games-today.json", summary["skipped"])
+        self.assertEqual(summary["invalid"], {})
+
+    def test_build_never_calls_the_nba_api(self):
+        with mock.patch.object(nba_client, "OFFLINE", False), \
+                mock.patch("nba_api.stats.library.http.NBAStatsHTTP.send_api_request",
+                           side_effect=AssertionError("called the NBA API")) as send:
+            build.build_site(self.out)
+        send.assert_not_called()
+
+    def test_deploys_only_when_something_changed(self):
+        self.put(("standings", "2024-25"), _standings_frame())
+        deployer = mock.Mock()
+        build.build_and_deploy(self.out, deployer=deployer)
+        build.build_and_deploy(self.out, deployer=deployer)
+        self.assertEqual(deployer.call_count, 1)
+        self.put(("standings", "2023-24"), _standings_frame())
+        build.build_and_deploy(self.out, deployer=deployer)
+        self.assertEqual(deployer.call_count, 2)
 
 
 class ProxySettingTest(unittest.TestCase):
@@ -327,8 +337,8 @@ class PlayersApiTest(unittest.TestCase):
             self.addCleanup(p.stop)
         self.client = app_module.app.test_client()
 
-    def _players(self, query=""):
-        data = self.client.get(f"/api/players?season=2024-25{query}").get_json()
+    def _players(self, season_type="regular"):
+        data = self.client.get(f"/data/players/2024-25/{season_type}.json").get_json()
         self.assertTrue(data["success"])
         return {p["PLAYER_NAME"]: p for p in data["data"]}
 
@@ -337,24 +347,26 @@ class PlayersApiTest(unittest.TestCase):
         self.assertEqual(alpha["USG_PCT"], 30.0)
         self.assertEqual(alpha["PIE"], 15.0)
 
-    def test_search_ignores_case_and_accents(self):
-        self.assertEqual(list(self._players("&search=ALPHA")), ["Alpha Guard"])
-
-    def test_search_does_not_change_metrics(self):
-        unfiltered = self._players()["Alpha Guard"]
-        filtered = self._players("&search=alpha")
-        self.assertEqual(list(filtered), ["Alpha Guard"])
-        self.assertEqual(filtered["Alpha Guard"]["USG_PCT"], unfiltered["USG_PCT"])
+    def test_highest_scorers_first(self):
+        self.assertEqual(list(self._players()), ["Alpha Guard", "Beta Center"])
 
     def test_playoffs_season_type_passed_through(self):
-        self._players("&season_type=playoffs")
+        self._players("playoffs")
         season_types = {c.kwargs.get("season_type") or c.args[2]
                         for c in app_module.get_league_player_stats.call_args_list}
         self.assertEqual(season_types, {"Playoffs"})
 
-    def test_positions_joined_and_filterable(self):
+    def test_positions_joined(self):
         self.assertEqual(self._players()["Alpha Guard"]["POSITION"], "G-F")
-        self.assertEqual(list(self._players("&position=C")), ["Beta Center"])
+
+    def test_csv_export(self):
+        resp = self.client.get("/data/players/2024-25/regular.csv")
+        self.assertEqual(resp.mimetype, "text/csv")
+        self.assertEqual(resp.get_data(as_text=True).splitlines()[1].split(",")[1], "Alpha Guard")
+
+    def test_bad_season_or_type_is_404(self):
+        self.assertEqual(self.client.get("/data/players/2024/regular.json").status_code, 404)
+        self.assertEqual(self.client.get("/data/players/2024-25/preseason.json").status_code, 404)
 
 
 class PlayerApiTest(unittest.TestCase):
@@ -370,37 +382,29 @@ class PlayerApiTest(unittest.TestCase):
         profile = mock.Mock(get_normalized_dict=mock.Mock(return_value={
             "SeasonTotalsRegularSeason": [season], "CareerTotalsRegularSeason": []}))
         with mock.patch.object(nba_client, "nbacall_retry", side_effect=[info, profile]):
-            data = self.client.get("/api/player/1?season=2024-25").get_json()
-        sel = data["selected_season"]
+            data = self.client.get("/data/player/1.json").get_json()
+        sel = data["seasons_regular"][0]
         self.assertEqual(sel["TOV_TOTAL"], 200)
         self.assertEqual(sel["TOV"], 4.0)
         self.assertAlmostEqual(sel["TOV_P36"], 4.0 * 36 / 35)
 
 
-class SearchPlayersApiTest(unittest.TestCase):
-    def _names(self, q):
-        client = app_module.app.test_client()
-        return [p["name"] for p in client.get("/api/search-players", query_string={"q": q}).get_json()["players"]]
+class PlayerIndexTest(unittest.TestCase):
+    """Search keys pages match against (the matching itself runs in the browser)."""
 
-    def test_ignores_accents_and_punctuation(self):
-        self.assertIn("Luka Dončić", self._names("doncic"))
-        self.assertIn("Nikola Jokić", self._names("JOKIC"))
-        self.assertIn("P.J. Washington", self._names("pj washington"))
-        self.assertIn("D'Angelo Russell", self._names("d'angelo"))
-        self.assertIn("Shai Gilgeous-Alexander", self._names("gilgeous alexander"))
+    @classmethod
+    def setUpClass(cls):
+        players = app_module.app.test_client().get("/data/player-index.json").get_json()["players"]
+        cls.keys = {p["name"]: p["key"] for p in players}
 
-    def test_ranks_name_prefix_matches_before_substrings(self):
-        names = self._names("james")
-        self.assertIn("LeBron James", names)
-        self.assertIn("James Harden", names)
+    def test_keys_ignore_case_accents_and_punctuation(self):
+        self.assertEqual(self.keys["Luka Dončić"], "luka doncic")
+        self.assertEqual(self.keys["P.J. Washington"], "pj washington")
+        self.assertEqual(self.keys["D'Angelo Russell"], "dangelo russell")
+        self.assertEqual(self.keys["Shai Gilgeous-Alexander"], "shai gilgeous alexander")
 
-    def test_blank_query_returns_nothing(self):
-        self.assertEqual(self._names(" . "), [])
-
-    def test_lookup_by_ids_keeps_order_and_skips_unknown(self):
-        client = app_module.app.test_client()
-        data = client.get("/api/search-players?ids=201939,2544,999999999,abc").get_json()
-        self.assertEqual([p["name"] for p in data["players"]], ["Stephen Curry", "LeBron James"])
+    def test_lists_every_player_outside_hosted_mode(self):
+        self.assertGreater(len(self.keys), 4000)
 
 
 class GameLogApiTest(unittest.TestCase):
@@ -413,13 +417,13 @@ class GameLogApiTest(unittest.TestCase):
             {"Game_ID": "1", "GAME_DATE": "Oct 21, 2025", "MATCHUP": "LAL @ GSW", "WL": "L", "PTS": 25},
         ])
         with mock.patch.object(app_module, "get_player_gamelog", return_value=df) as get:
-            data = self.client.get("/api/player/2544/gamelog?season=2025-26").get_json()
+            data = self.client.get("/data/player/2544/gamelog/2025-26/regular.json").get_json()
         self.assertEqual([g["GAME_DATE"] for g in data["games"]], ["2025-10-21", "2026-04-12"])
         self.assertEqual(get.call_args.args, (2544, "2025-26", "Regular Season"))
 
     def test_playoffs_season_type(self):
         with mock.patch.object(app_module, "get_player_gamelog", return_value=pd.DataFrame()) as get:
-            data = self.client.get("/api/player/2544/gamelog?season=2018-19&season_type=playoffs").get_json()
+            data = self.client.get("/data/player/2544/gamelog/2018-19/playoffs.json").get_json()
         self.assertEqual(get.call_args.args[2], "Playoffs")
         self.assertEqual(data["games"], [])
 
@@ -431,7 +435,7 @@ class RosterAnalysisApiTest(unittest.TestCase):
                                 "STL": 10, "BLK": 5, "FGA": 200, "FGM": 100, "FTA": 50, "FTM": 40, "TOV": 25}])
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), roster]))
         with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint):
-            data = app_module.app.test_client().get("/api/roster-analysis/1?season=2024-25").get_json()
+            data = app_module.roster_leaders(1, "2024-25")
         # (300+50+60+10+5) - ((200-100) + (50-40) + 25) = 290 over 10 games
         self.assertEqual(data["most_efficient"]["stat"], 29.0)
         self.assertEqual(data["top_scorer"]["stat"], 30.0)
@@ -454,7 +458,7 @@ class HomeApiTest(unittest.TestCase):
         ])
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), games, teams_df]))
         with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint):
-            data = self.client.get("/api/games-today").get_json()
+            data = self.client.get("/data/games-today.json").get_json()
         game = data["games"][0]
         self.assertEqual((game["away"]["tricode"], game["away"]["score"]), ("NYK", 125))
         self.assertEqual((game["home"]["tricode"], game["home"]["score"]), ("PHI", 119))
@@ -468,7 +472,7 @@ class HomeApiTest(unittest.TestCase):
              "GP": 5, "PTS": 200, "REB": 10, "AST": 10},
         ])
         with mock.patch.object(app_module, "get_league_player_stats", return_value=df):
-            data = self.client.get("/api/league-leaders?season=2024-25").get_json()
+            data = self.client.get("/data/leaders/2024-25.json").get_json()
         self.assertEqual(data["min_games"], 30)
         self.assertEqual([p["name"] for p in data["leaders"]["PTS"]], ["Regular"])
         self.assertEqual(data["leaders"]["PTS"][0]["value"], 25.0)
@@ -482,8 +486,7 @@ class TeamMonthlySeriesApiTest(unittest.TestCase):
             {"GAME_DATE": "Dec 02, 2024", "WL": "W"},
         ])
         with mock.patch.object(app_module, "get_team_gamelog_cached", return_value=log):
-            data = app_module.app.test_client().get(
-                "/api/team-monthly-series?team_id=1&season=2024-25").get_json()
+            data = app_module.team_monthly_series(1, "2024-25")
         self.assertEqual(data["months"], ["Oct", "Dec"])
         self.assertEqual(data["win_pct"], [50.0, 100.0])
         self.assertEqual((data["wins"], data["losses"]), ([1, 1], [1, 0]))
@@ -504,14 +507,14 @@ class StandingsApiTest(unittest.TestCase):
         df = pd.DataFrame([self._row(1, "East Two", "East", 2, 50), self._row(2, "West One", "West", 1, 60),
                            self._row(3, "East One", "East", 1, 55)])
         with mock.patch.object(app_module, "get_standings", return_value=df):
-            data = self.client.get("/api/standings?season=2024-25").get_json()
+            data = self.client.get("/data/standings/2024-25.json").get_json()
         self.assertEqual([r["team"] for r in data["east"]], ["East One Team", "East Two Team"])
         self.assertEqual(len(data["west"]), 1)
         self.assertEqual(data["east"][0]["streak"], "W 2")
 
     def test_empty_season_is_404(self):
         with mock.patch.object(app_module, "get_standings", return_value=pd.DataFrame()):
-            resp = self.client.get("/api/standings?season=2024-25")
+            resp = self.client.get("/data/standings/2024-25.json")
         self.assertEqual(resp.status_code, 404)
 
 
@@ -525,15 +528,15 @@ class ShotChartApiTest(unittest.TestCase):
                            "PERIOD": [1, 5], "SHOT_ZONE_BASIC": ["Restricted Area", "Left Corner 3"]})
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[df]))
         with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint) as call:
-            data = self.client.get("/api/shot-chart/2544?season=2024-25").get_json()
+            data = self.client.get("/data/player/2544/shots/2024-25/regular.json").get_json()
         self.assertEqual(data["count"], 2)
         self.assertEqual(call.call_args.kwargs["context_measure_simple"], "FGA")
 
-    def test_no_shots_is_404(self):
+    def test_no_shots_is_an_empty_list(self):
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame()]))
         with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint):
-            resp = self.client.get("/api/shot-chart/2544?season=1999-00")
-        self.assertEqual(resp.status_code, 404)
+            data = self.client.get("/data/player/2544/shots/1999-00/regular.json").get_json()
+        self.assertEqual((data["success"], data["shots"]), (True, []))
 
 
 if __name__ == "__main__":

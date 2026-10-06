@@ -130,7 +130,7 @@
             <span class="explore-desc">TS%, usage, PIE and league leaders</span>
           </span>
         </a>
-        <a class="explore-card" href="/api/export/players">
+        <a class="explore-card" href="/data/players/{{ season }}/regular.csv" download>
           <span class="explore-icon"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
@@ -180,9 +180,7 @@
     if (refreshing) UI.refreshing(grid, true);
     else UI.skeleton(grid, 'cards', 4);
     try {
-      const res = await fetch('/api/games-today');
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
+      const data = await SiteData.get('games-today.json', { fresh: true });
       document.getElementById('games-date').textContent =
         new Date(`${data.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       if (!data.games.length) {
@@ -231,9 +229,7 @@
     const container = document.getElementById('leaders');
     UI.skeleton(container, 'rows', 6);
     try {
-      const res = await fetch(`/api/league-leaders?season=${encodeURIComponent(SEASON)}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
+      const data = await SiteData.get(`leaders/${SEASON}.json`);
       const columns = Object.entries(STAT_LABELS)
         .filter(([stat]) => (data.leaders[stat] || []).length)
         .map(([stat, label]) => leaderColumn(label, data.leaders[stat]));
@@ -274,9 +270,7 @@
     const container = document.getElementById('standings-snapshot');
     UI.skeleton(container, 'rows', 8);
     try {
-      const res = await fetch(`/api/standings?season=${encodeURIComponent(SEASON)}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
+      const data = await SiteData.get(`standings/${SEASON}.json`);
       container.replaceChildren(
         snapshotTable('East', data.east.slice(0, SNAPSHOT_ROWS)),
         snapshotTable('West', data.west.slice(0, SNAPSHOT_ROWS)),
@@ -327,10 +321,13 @@
       if (q.length < 2) return hide();
       timer = setTimeout(async () => {
         const id = ++requestId;
-        const res = await fetch(`/api/search-players?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
+        let players = [];
+        try {
+          players = await SiteData.searchPlayers(q);
+        } catch (e) {
+          console.error(e);
+        }
         if (id !== requestId) return;
-        const players = data.success ? data.players : [];
         results.replaceChildren(...(players.length ? players.map(p => {
           const a = el('a', 'search-option search-player');
           a.href = `/player/${p.id}`;

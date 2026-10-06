@@ -56,10 +56,8 @@
         return;
       }
       try {
-        const res = await fetch(`/api/search-players?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'search failed');
-        const list = data.players || [];
+        const list = await SiteData.searchPlayers(q);
+        if (q !== lastQuery) return;  // a newer search finished first
         tbody.innerHTML = list.map(p => `
           <tr>
             <td><span class="player-cell">${NbaMedia.avatarHtml(p.id, p.name, 36)}${p.name}</span></td>

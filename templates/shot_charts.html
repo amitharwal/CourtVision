@@ -167,9 +167,7 @@
 
         async function searchPlayers(query) {
             try {
-                const response = await fetch(`/api/search-players?q=${encodeURIComponent(query)}`);
-                const data = await response.json();
-                if (data.success) displayPlayerResults(data.players);
+                displayPlayerResults(await SiteData.searchPlayers(query));
             } catch (error) {
                 console.error('Search error:', error);
             }
@@ -225,19 +223,18 @@
             const seasonType = document.getElementById('season-type').value;
 
             try {
-                const response = await fetch(`/api/shot-chart/${selectedPlayer.id}?season=${season}&season_type=${seasonType}`);
-                const data = await response.json();
-
-                if (data.success) {
+                const data = await SiteData.get(`player/${selectedPlayer.id}/shots/${season}/${seasonType}.json`);
+                if (data.shots.length) {
                     shotData = data.shots;
                     UrlState.set({ player: selectedPlayer.id, season, type: seasonType });
                     displayShotChart();
                     document.getElementById('chart-container').style.display = 'block';
                 } else {
-                    UI.toast(data.error || 'No shot data for this player and season.', { kind: 'error' });
+                    const label = seasonType === 'playoffs' ? 'playoff shots' : 'shots';
+                    UI.toast(`No ${label} for ${selectedPlayer.name} in ${season}.`, { kind: 'error' });
                 }
             } catch (error) {
-                UI.toast('Failed to load the shot chart. Please try again.', { kind: 'error' });
+                UI.toast(error.message, { kind: 'error' });
             } finally {
                 document.getElementById('loading').style.display = 'none';
                 UI.refreshing(chart, false);

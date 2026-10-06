@@ -26,74 +26,73 @@ FLASK_DEBUG=1 python app.py    # with the debugger and auto-reload
 ```
 Set `PORT` to use a different port.
 
-## Deploying
+## Deploying (free, as a static site)
 stats.nba.com blocks or stalls requests from cloud servers (the "NBA API connectivity"
 GitHub Action confirms it: every endpoint times out from a GitHub/Azure runner). So the
-hosted site never calls the NBA itself. Instead:
-
-- **Host** runs in hosted mode and serves only data that has been published to it.
-- **Fetcher** runs on a machine the NBA doesn't block (e.g. your own computer), fetches
-  the data and publishes changed entries to the host over HTTPS.
+site is built where the NBA API works, such as your own computer, and deployed as plain
+files to [Cloudflare Pages](https://pages.cloudflare.com/) (free plan).
 
 ```
-your computer (fetcher)                         cloud host (COURTVISION_OFFLINE=1)
-stats.nba.com -> cache.sqlite3 -- publish -->   /api/admin/cache-entries -> cache.sqlite3 -> pages
+your computer                                                    Cloudflare Pages
+stats.nba.com -> instance/cache.sqlite3 -> flask build -> dist/ -- wrangler -->  courtvision.pages.dev
 ```
 
-### 1. Host
+`flask --app app build` saves every page and data file the cache can fill into `dist/`.
+Each file is the Flask app's own response for that URL (`/standings` ->
+`standings.html`, `/data/standings/2025-26.json` -> the same path), so the static site
+and `python app.py` serve the same data. Building never calls the NBA API: the site
+offers only the seasons, players and season types that were fetched, and anything else
+shows a "not on the site yet" message.
+
+The cache keeps season data indefinitely (only old daily scoreboards are pruned), so
+once a season has been fetched it stays on the site. To add an older season:
+`flask --app app update --season 2023-24 --players`.
+
+### One-time setup
+1. Install [Node.js](https://nodejs.org/) (deploys run `npx wrangler`).
+2. Create a free Cloudflare account, then the Pages project:
+   `npx wrangler login && npx wrangler pages project create courtvision --production-branch main`
+3. Create an API token with the **Cloudflare Pages: Edit** permission (My Profile → API
+   Tokens) and put it in `~/.config/courtvision/deploy.env` (`chmod 600`):
+   ```bash
+   CLOUDFLARE_API_TOKEN=...
+   CLOUDFLARE_ACCOUNT_ID=...                 # shown on the Cloudflare dashboard
+   COURTVISION_PAGES_PROJECT=courtvision     # optional, this is the default
+   ```
+4. First deploy: `scripts/run_fetcher.sh nightly` (fetches everything, ~1 hour).
+
+### Keeping it up to date
 ```bash
-gunicorn app:app -c gunicorn.conf.py    # also what the Procfile runs
-```
-with these environment variables:
-
-| Variable | Value |
-|---|---|
-| `COURTVISION_OFFLINE` | `1` (never call stats.nba.com) |
-| `COURTVISION_PUBLISH_TOKEN` | a long random secret, e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`; publishing is disabled when unset |
-| `COURTVISION_WARM` | `0` (nothing to warm on the host) |
-| `COURTVISION_CACHE` | cache file path; put it on a persistent disk if the host has one |
-
-Pages offer only what has been published: season menus list published seasons, the
-Playoffs option turns on once a season's playoffs have games, and player search finds
-players whose pages were published. Anything else (e.g. an old shared link) returns a
-clear "not published yet" message immediately instead of waiting on the NBA API.
-
-### 2. Fetcher
-Put the host's URL and token in `~/.config/courtvision/publish.env` (`chmod 600`):
-```bash
-COURTVISION_URL=https://your-site.example.com
-COURTVISION_PUBLISH_TOKEN=the-same-secret-as-the-host
-```
-Then:
-```bash
+scripts/run_fetcher.sh live      # today's scoreboard (seconds; every ~10 min)
 scripts/run_fetcher.sh hourly    # league tables, standings, all teams (~1 min)
 scripts/run_fetcher.sh nightly   # + every active player's pages and shot charts (and playoff ones in the playoffs)
-scripts/run_fetcher.sh live      # today's scoreboard (seconds; for game nights)
 ```
-Only entries that changed since the last publish are sent. Add `--full` to the underlying
-`flask --app app publish` command to resend everything to a freshly deployed host.
-`deploy/macos/` has launchd schedules for all three jobs (every 5 min / hourly / 4:30 AM).
-Data on the host is only as fresh as the last publish, so the fetcher machine needs to be
-on and online.
+Each run fetches, rebuilds `dist/` and deploys only if something changed, so the live
+job is quiet outside game times. `deploy/macos/` has launchd schedules for all three
+jobs (every 10 min / hourly / 4:30 AM). The site is only as fresh as the last run, so
+the computer needs to be on and online.
 
-### Self-hosting without a fetcher
-On a machine that can reach stats.nba.com (check with `python scripts/check_nba_api.py`),
-run the same gunicorn command without `COURTVISION_OFFLINE`. It calls the NBA API directly
-and warms its cache at startup.
+### Previewing a build
+```bash
+flask --app app build      # write dist/ from the current cache
+flask --app app preview    # http://127.0.0.1:8080, served the way Pages serves it
+```
+`COURTVISION_OFFLINE=1 python app.py` also shows only cached data, with the dev server.
 
 | Variable | Purpose |
 |---|---|
 | `NBA_PROXY` | Proxy URL for stats.nba.com (comma-separate several to rotate) |
 | `NBA_TIMEOUT` | NBA API timeout in seconds (default 30) |
-| `WEB_CONCURRENCY`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT` | gunicorn workers, threads per worker, request timeout |
+| `COURTVISION_CACHE` | Cache file path (default `instance/cache.sqlite3`) |
+| `COURTVISION_OFFLINE` | `1`: the dev server never calls stats.nba.com, like a build |
 
 ## Project layout
-- `app.py`: Flask routes (pages and JSON API)
+- `app.py`: Flask routes (pages, and JSON data files under `/data/`)
 - `nba_client.py`: stats.nba.com access with retries and a memory + SQLite TTL cache
-- `publish.py`: sends cached data from a fetcher to a hosted copy of the site
+- `build.py`: builds the static site from the cache and deploys it to Cloudflare Pages
 - `metrics.py`: box-score derived metrics
 - `templates/`: Jinja templates; every page extends `base.html`
-- `static/css/`: per-page stylesheets
+- `static/css/`: per-page stylesheets; `static/js/`: shared scripts (`site-data.js` loads data files and searches players)
 
 ## Tests
 ```bash

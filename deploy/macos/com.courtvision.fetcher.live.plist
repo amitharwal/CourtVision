@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Court Vision fetcher: Today's scoreboard every 5 minutes.
+  Court Vision fetcher: Today's scoreboard every 10 minutes (deploys only when it changed).
   Replace /PATH/TO/CourtVision below, then install with:
     cp deploy/macos/com.courtvision.fetcher.live.plist ~/Library/LaunchAgents/
     launchctl load ~/Library/LaunchAgents/com.courtvision.fetcher.live.plist
-  Settings (URL, token) come from ~/.config/courtvision/publish.env; see scripts/run_fetcher.sh.
+  Settings (Cloudflare token and account) come from ~/.config/courtvision/deploy.env; see scripts/run_fetcher.sh.
 -->
 <plist version="1.0">
   <dict>
@@ -18,7 +18,7 @@
       <string>live</string>
     </array>
     <key>StartInterval</key>
-    <integer>300</integer>
+    <integer>600</integer>
     <key>StandardOutPath</key>
     <string>/tmp/courtvision-fetcher-live.log</string>
     <key>StandardErrorPath</key>
