@@ -8,21 +8,32 @@ Configuration (environment variables):
   NBA_TIMEOUT        request timeout in seconds (default 30)
   COURTVISION_CACHE  path of the SQLite cache file (default instance/cache.sqlite3);
                      "off" disables the disk layer
+  COURTVISION_OFFLINE  "1" = hosted mode: never call stats.nba.com; serve only data
+                     published into the cache by a fetcher (see publish.py)
 """
+import json
 import os
-import pickle
 import sqlite3
 import threading
 import time
+import zlib
+from contextlib import contextmanager
 from datetime import datetime
+from io import StringIO
 from time import time as _now
+
+import numpy as np
 
 import pandas as pd
 from nba_api.stats.endpoints import (
     LeagueGameLog,
     PlayerGameLog,
+    ScoreboardV3,
     TeamGameLog,
     TeamPlayerDashboard,
+    commonplayerinfo,
+    playerprofilev2,
+    shotchartdetail,
     leaguedashplayerstats,
     leaguedashteamstats,
     leaguestandingsv3,
@@ -46,6 +57,10 @@ def _proxy_setting():
 
 PROXY = _proxy_setting()
 DEFAULT_TIMEOUT = int(os.environ.get("NBA_TIMEOUT", "30"))
+OFFLINE = os.environ.get("COURTVISION_OFFLINE", "0") == "1"
+
+class NBAUnavailable(Exception):
+    """Raised instead of calling stats.nba.com when running in hosted (offline) mode."""
 
 # First season covered by the league dashboard, advanced stats and shot chart endpoints.
 FIRST_STATS_SEASON_YEAR = 1996
@@ -65,44 +80,107 @@ TTL_DEFAULT = 1800       # 30 minutes (season stats)
 TTL_LONG = 24 * 3600     # 1 day (player index / positions)
 DISK_MAX_AGE = 7 * 24 * 3600  # entries older than this are pruned at startup
 
+# ------------------------------------------------------------------------------
+# Value codec: cached values as tagged JSON (never pickle), so cache entries can
+# be shipped between machines without the receiver executing anything.
+# ------------------------------------------------------------------------------
+def encode_value(value):
+    """Turn a cached value (DataFrames, lists, dicts, scalars) into JSON-safe data."""
+    if isinstance(value, pd.DataFrame):
+        return {"__df__": value.to_json(orient="split", date_format="iso", double_precision=15)}
+    if isinstance(value, dict):
+        if all(isinstance(k, str) for k in value):
+            return {"__dict__": {k: encode_value(v) for k, v in value.items()}}
+        return {"__pairs__": [[encode_value(k), encode_value(v)] for k, v in value.items()]}
+    if isinstance(value, (list, tuple)):
+        return [encode_value(v) for v in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(f"cannot cache value of type {type(value).__name__}")
+
+def decode_value(data):
+    """Inverse of encode_value."""
+    if isinstance(data, dict):
+        if "__df__" in data:
+            # dtype/convert_dates off: keep IDs like "0022400561" and date strings as sent
+            return pd.read_json(StringIO(data["__df__"]), orient="split", dtype=False, convert_dates=False, precise_float=True)
+        if "__dict__" in data:
+            return {k: decode_value(v) for k, v in data["__dict__"].items()}
+        if "__pairs__" in data:
+            return {decode_value(k): decode_value(v) for k, v in data["__pairs__"]}
+        raise ValueError("unknown tagged value")
+    if isinstance(data, list):
+        return [decode_value(v) for v in data]
+    return data
+
+def dumps_value(value) -> bytes:
+    return zlib.compress(json.dumps(encode_value(value), separators=(",", ":")).encode())
+
+def loads_value(blob: bytes):
+    return decode_value(json.loads(zlib.decompress(blob)))
+
 class DiskCache:
     """
     SQLite-backed key/value store shared by every server process, so a restart or
-    a second gunicorn worker doesn't start cold. Values are pickled: the file must
-    only ever be writable by this app.
+    a second gunicorn worker doesn't start cold. Values are stored with the JSON
+    codec above (zlib-compressed); keys are repr() of the cache-key tuple.
     """
+
+    TABLE = "cache_v2"  # v1 held pickles; it is never read again
 
     def __init__(self, path: str):
         self.path = path
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with self._connect() as db:
+        with self._db() as db:
             db.execute("PRAGMA journal_mode=WAL")
-            db.execute("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, ts REAL, value BLOB)")
+            db.execute(f"CREATE TABLE IF NOT EXISTS {self.TABLE} (key TEXT PRIMARY KEY, ts REAL, value BLOB)")
 
-    def _connect(self):
-        return sqlite3.connect(self.path, timeout=5)
+    @contextmanager
+    def _db(self):
+        """A short-lived connection: committed (or rolled back) and always closed, so no
+        process keeps an old read snapshot or a leaked handle on the shared file."""
+        db = sqlite3.connect(self.path, timeout=5)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def get(self, key):
         """Return (ts, value) or None."""
         try:
-            with self._connect() as db:
-                row = db.execute("SELECT ts, value FROM cache WHERE key = ?", (repr(key),)).fetchone()
-            return (row[0], pickle.loads(row[1])) if row else None
+            with self._db() as db:
+                rows = db.execute(f"SELECT ts, value FROM {self.TABLE} WHERE key = ?", (repr(key),)).fetchall()
+            return (rows[0][0], loads_value(rows[0][1])) if rows else None
         except Exception as e:
             print(f"[WARN] disk cache read failed for {key}: {e}")
             return None
 
     def set(self, key, ts, value):
         try:
-            blob = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-            with self._connect() as db:
-                db.execute("INSERT OR REPLACE INTO cache (key, ts, value) VALUES (?, ?, ?)", (repr(key), ts, blob))
+            self.put_raw(repr(key), ts, dumps_value(value))
         except Exception as e:
             print(f"[WARN] disk cache write failed for {key}: {e}")
 
+    def put_raw(self, key_text: str, ts: float, blob: bytes):
+        """Store an already-encoded entry, keeping whichever copy is newer."""
+        with self._db() as db:
+            db.execute(
+                f"INSERT INTO {self.TABLE} (key, ts, value) VALUES (?, ?, ?) "
+                f"ON CONFLICT(key) DO UPDATE SET ts = excluded.ts, value = excluded.value WHERE excluded.ts > ts",
+                (key_text, ts, blob),
+            )
+
+    def entries_since(self, ts: float):
+        """(key_text, ts, blob) for entries newer than ts, oldest first."""
+        with self._db() as db:
+            return db.execute(f"SELECT key, ts, value FROM {self.TABLE} WHERE ts > ? ORDER BY ts", (ts,)).fetchall()
+
     def prune(self, max_age: float):
-        with self._connect() as db:
-            db.execute("DELETE FROM cache WHERE ts < ?", (_now() - max_age,))
+        with self._db() as db:
+            db.execute(f"DELETE FROM {self.TABLE} WHERE ts < ?", (_now() - max_age,))
 
 def _open_disk_cache():
     path = os.environ.get("COURTVISION_CACHE", os.path.join(os.path.dirname(__file__), "instance", "cache.sqlite3"))
@@ -145,7 +223,8 @@ def cached(key, ttl: int, loader):
         value = loader()
     except Exception as e:
         if entry:
-            print(f"[WARN] serving stale cache for {key} due to: {e}")
+            if not isinstance(e, NBAUnavailable):  # expected on every request in hosted mode
+                print(f"[WARN] serving stale cache for {key} due to: {e}")
             return entry["value"]
         raise
 
@@ -157,7 +236,8 @@ def cached(key, ttl: int, loader):
 
 def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
     """
-    Fetch TeamGameLog, cached for 30min. Returns an empty DataFrame on failure.
+    Fetch TeamGameLog, cached for 30min. Returns an empty DataFrame on failure, except
+    in hosted mode, where unpublished data raises NBAUnavailable.
     """
     def load():
         df = nbacall_retry(
@@ -171,6 +251,8 @@ def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
 
     try:
         return cached(("team_gamelog", int(team_id), season), TTL_DEFAULT, load)
+    except NBAUnavailable:
+        raise  # hosted mode: "not published" must not look like "no games played"
     except Exception as e:
         print(f"[WARN] get_team_gamelog_cached failed: {e}")
         return pd.DataFrame()
@@ -241,6 +323,44 @@ def get_team_player_dashboard(team_id, season: str):
 
     return cached(("team_player_dashboard", int(team_id), season), TTL_DEFAULT, load)
 
+def get_scoreboard(game_date: str):
+    """ScoreboardV3 for a YYYY-MM-DD date as [games_df, teams_df], cached for 2min."""
+    def load():
+        frames = nbacall_retry(ScoreboardV3, game_date=game_date, league_id="00").get_data_frames()
+        return [frames[1], frames[2]]
+
+    return cached(("scoreboard", game_date), TTL_SHORT, load)
+
+def get_player_info(player_id: int):
+    """CommonPlayerInfo bio row(s), cached for 30min."""
+    return cached(
+        ("player_info", int(player_id)),
+        TTL_DEFAULT,
+        lambda: nbacall_retry(commonplayerinfo.CommonPlayerInfo, player_id=player_id).get_data_frames()[0],
+    )
+
+def get_player_profile(player_id: int):
+    """PlayerProfileV2 as a normalized dict of season/career tables, cached for 30min."""
+    return cached(
+        ("player_profile", int(player_id)),
+        TTL_DEFAULT,
+        lambda: nbacall_retry(playerprofilev2.PlayerProfileV2, player_id=player_id).get_normalized_dict(),
+    )
+
+def get_shot_chart(player_id: int, season: str, season_type: str = "Regular Season"):
+    """Every field-goal attempt for a player and season, cached for 30min."""
+    def load():
+        return nbacall_retry(
+            shotchartdetail.ShotChartDetail,
+            team_id=0,
+            player_id=player_id,
+            season_nullable=season,
+            season_type_all_star=season_type,
+            context_measure_simple="FGA",  # the default ("PTS") returns made shots only
+        ).get_data_frames()[0]
+
+    return cached(("shot_chart", int(player_id), season, season_type), TTL_DEFAULT, load)
+
 def get_player_positions():
     """
     Map PLAYER_ID -> position string ("G", "F-C", ...) from PlayerIndex.
@@ -293,6 +413,8 @@ def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs
     Wrapper for nba_api endpoint classes with consistent timeout/proxy and
     a simple retry with linear backoff.
     """
+    if OFFLINE:
+        raise NBAUnavailable(f"{endpoint_cls.__name__}: hosted mode serves published data only")
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
     if PROXY:
         kwargs.setdefault("proxy", PROXY)
@@ -310,33 +432,75 @@ def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs
     if last_err:
         raise last_err
 
-def warm_cache(season: str = None, include_teams: bool = True) -> dict:
+def warm_cache(season: str = None, include_teams: bool = True, include_players: bool = False,
+               live_only: bool = False, progress=None) -> dict:
     """
-    Pre-fetch the data the busiest pages need for a season, so the first visitor
-    doesn't wait on the NBA API: league player/team tables, standings, positions
-    and (optionally) every team's game log and roster. Returns {"ok": [...], "failed": {...}}.
+    Pre-fetch data into the cache so pages don't wait on the NBA API (and so a fetcher
+    can publish it to a hosted copy of the site).
+
+    - live_only: just today's scoreboard (cheap; run every few minutes during games)
+    - default: league tables, standings, positions, today's scoreboard and, with
+      include_teams, every team's game log and roster (~66 requests)
+    - include_players: also every active player's bio, career profile, game log and
+      shot chart for the season (~4 requests per player; run nightly)
+    progress(done, total, name) is called after each job if given.
+    Returns {"season", "ok": [...], "failed": {name: error}}.
     """
+    from zoneinfo import ZoneInfo
+
     season = season or get_seasons()[0]
-    jobs = [
-        ("league player stats", lambda: get_league_player_stats(season)),
-        ("league advanced stats", lambda: get_league_player_stats(season, "Advanced")),
-        ("league team stats", lambda: get_league_team_stats(season)),
-        ("team estimated metrics", lambda: get_team_estimated_metrics(season)),
-        ("standings", lambda: get_standings(season)),
-        ("player positions", get_player_positions),
-    ]
-    if include_teams:
-        for team in static_teams.get_teams():
-            tid, abbr = team["id"], team["abbreviation"]
-            jobs.append((f"{abbr} game log", lambda tid=tid: get_team_gamelog_cached(tid, season, timeout_sec=DEFAULT_TIMEOUT)))
-            jobs.append((f"{abbr} roster", lambda tid=tid: get_team_player_dashboard(tid, season)))
+    today_et = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    jobs = [("today's scoreboard", lambda: get_scoreboard(today_et))]
+
+    if not live_only:
+        jobs += [
+            ("season status", lambda: season_has_started(season)),
+            ("league player stats", lambda: get_league_player_stats(season)),
+            ("league advanced stats", lambda: get_league_player_stats(season, "Advanced")),
+            ("league team stats", lambda: get_league_team_stats(season)),
+            ("team estimated metrics", lambda: get_team_estimated_metrics(season)),
+            ("standings", lambda: get_standings(season)),
+            ("player positions", get_player_positions),
+        ]
+        if include_teams:
+            for team in static_teams.get_teams():
+                tid, abbr = team["id"], team["abbreviation"]
+                jobs.append((f"{abbr} game log", lambda tid=tid: get_team_gamelog_cached(tid, season, timeout_sec=DEFAULT_TIMEOUT)))
+                jobs.append((f"{abbr} roster", lambda tid=tid: get_team_player_dashboard(tid, season)))
 
     ok, failed = [], {}
-    for name, job in jobs:
+
+    def run(name, job):
         try:
             job()
             ok.append(name)
         except Exception as e:
             failed[name] = str(e)
-    return {"season": season, "ok": ok, "failed": failed}
 
+    total = len(jobs)
+    for i, (name, job) in enumerate(jobs, 1):
+        run(name, job)
+        if progress:
+            progress(i, total, name)
+
+    if include_players and not live_only:
+        try:
+            player_ids = [int(pid) for pid in get_league_player_stats(season)["PLAYER_ID"]]
+        except Exception as e:
+            failed["player list"] = str(e)
+            player_ids = []
+        player_jobs = []
+        for pid in player_ids:
+            player_jobs += [
+                (f"player {pid} info", lambda pid=pid: get_player_info(pid)),
+                (f"player {pid} profile", lambda pid=pid: get_player_profile(pid)),
+                (f"player {pid} game log", lambda pid=pid: get_player_gamelog(pid, season)),
+                (f"player {pid} shot chart", lambda pid=pid: get_shot_chart(pid, season)),
+            ]
+        total += len(player_jobs)
+        for i, (name, job) in enumerate(player_jobs, len(jobs) + 1):
+            run(name, job)
+            if progress:
+                progress(i, total, name)
+
+    return {"season": season, "ok": ok, "failed": failed}

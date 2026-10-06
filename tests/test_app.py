@@ -1,3 +1,5 @@
+import gzip
+import json
 import os
 import tempfile
 import time
@@ -9,6 +11,7 @@ import pandas as pd
 
 import app as app_module
 import nba_client
+import publish
 from metrics import calculate_efficiency, calculate_true_shooting
 
 
@@ -107,6 +110,109 @@ class DiskCacheTest(unittest.TestCase):
         self.disk.prune(7 * 24 * 3600)
         self.assertIsNone(self.disk.get("old"))
         self.assertEqual(self.disk.get("new")[1], 2)
+
+
+class CodecTest(unittest.TestCase):
+    def roundtrip(self, value):
+        return nba_client.loads_value(nba_client.dumps_value(value))
+
+    def test_dataframe_keeps_ids_floats_and_missing_values(self):
+        df = pd.DataFrame({"GAME_ID": ["0022400561"], "MIN": [2269.9333333333334],
+                           "PCT": [float("nan")], "GP": [70], "NAME": ["Luka Dončić"]})
+        back = self.roundtrip(df)
+        self.assertEqual(back["GAME_ID"][0], "0022400561")
+        self.assertAlmostEqual(back["MIN"][0], 2269.9333333333334, places=12)
+        self.assertTrue(pd.isna(back["PCT"][0]))
+        self.assertEqual((back["GP"][0], back["NAME"][0]), (70, "Luka Dončić"))
+
+    def test_containers_and_non_string_keys(self):
+        value = {"positions": {2544: "F", 201939: "G"}, "frames": [pd.DataFrame({"A": [1]}), pd.DataFrame()],
+                 "flag": True, "rows": [{"x": 1.5}]}
+        back = self.roundtrip(value)
+        self.assertEqual(back["positions"], {2544: "F", 201939: "G"})
+        self.assertTrue(back["frames"][0].equals(pd.DataFrame({"A": [1]})))
+        self.assertEqual((back["flag"], back["rows"]), (True, [{"x": 1.5}]))
+
+    def test_rejects_unknown_types(self):
+        with self.assertRaises(TypeError):
+            nba_client.dumps_value(object())
+
+
+class HostedModeTest(unittest.TestCase):
+    """Publishing into a host that runs with COURTVISION_OFFLINE=1."""
+
+    TOKEN = "test-token-for-unit-tests"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "host.sqlite3"))
+        for patcher in (mock.patch.object(nba_client, "_DISK", self.disk),
+                        mock.patch.object(app_module, "OFFLINE", True),
+                        mock.patch.dict(os.environ, {"COURTVISION_PUBLISH_TOKEN": self.TOKEN})):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        nba_client._CACHE.clear()
+        self.client = app_module.app.test_client()
+
+    def upload(self, entries, token=TOKEN):
+        body = gzip.compress(json.dumps(entries).encode())
+        return self.client.post("/api/admin/cache-entries", data=body,
+                                headers={"Authorization": f"Bearer {token}", "Content-Encoding": "gzip"})
+
+    def standings_entry(self):
+        df = pd.DataFrame([{"TeamID": 1, "TeamCity": "Test", "TeamName": "Team", "Conference": "East",
+                            "PlayoffRank": 1, "WINS": 50, "LOSSES": 32, "WinPCT": 0.61, "ConferenceGamesBack": 0.0,
+                            "ConferenceRecord": "30-22", "HOME": "25-16", "ROAD": "25-16", "L10": "6-4",
+                            "strCurrentStreak": "W 1", "PointsPG": 115.0, "OppPointsPG": 110.0, "DiffPointsPG": 5.0}])
+        return {"key": repr(("standings", "2024-25")), "ts": time.time(),
+                "value": nba_client.encode_value(df)}
+
+    def test_unpublished_data_explains_itself(self):
+        resp = self.client.get("/api/standings?season=2024-25")
+        self.assertEqual(resp.status_code, 503)
+        self.assertTrue(resp.get_json()["hosted"])
+
+    def test_unpublished_team_log_is_not_reported_as_an_empty_season(self):
+        resp = self.client.get("/api/team-monthly-series?team_id=1&season=2024-25")
+        self.assertEqual(resp.status_code, 503)
+
+    def test_published_data_is_served(self):
+        self.assertEqual(self.upload([self.standings_entry()]).get_json()["stored"], 1)
+        data = self.client.get("/api/standings?season=2024-25").get_json()
+        self.assertEqual(data["east"][0]["wins"], 50)
+
+    def test_requires_the_token(self):
+        self.assertEqual(self.upload([self.standings_entry()], token="wrong").status_code, 401)
+        with mock.patch.dict(os.environ, {"COURTVISION_PUBLISH_TOKEN": ""}):
+            self.assertEqual(self.upload([self.standings_entry()]).status_code, 404)
+
+    def test_rejects_malformed_entries(self):
+        bad = self.standings_entry() | {"key": "__import__('os')"}
+        self.assertEqual(self.upload([bad]).status_code, 400)
+        self.assertEqual(self.upload([self.standings_entry() | {"value": {"__df__": "not json"}}]).status_code, 400)
+
+
+class PublishTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "fetcher.sqlite3"))
+        for patcher in (mock.patch.object(nba_client, "_DISK", self.disk),
+                        mock.patch.object(publish, "STATE_PATH", os.path.join(self.tmp.name, "state.json"))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_sends_only_entries_newer_than_the_last_publish(self):
+        self.disk.set(("a",), 100.0, 1)
+        ok = mock.Mock(status_code=200, json=mock.Mock(return_value={"stored": 1}))
+        with mock.patch.object(publish.requests, "post", return_value=ok) as post:
+            publish.publish("http://host", "t", echo=lambda *_: None)
+            self.disk.set(("b",), 200.0, 2)
+            publish.publish("http://host", "t", echo=lambda *_: None)
+        sent = [json.loads(gzip.decompress(c.kwargs["data"])) for c in post.call_args_list]
+        self.assertEqual([[e["key"] for e in batch] for batch in sent], [["('a',)"], ["('b',)"]])
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer t")
 
 
 class ProxySettingTest(unittest.TestCase):
@@ -219,7 +325,7 @@ class PlayerApiTest(unittest.TestCase):
         info = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame([{"PERSON_ID": 1}])]))
         profile = mock.Mock(get_normalized_dict=mock.Mock(return_value={
             "SeasonTotalsRegularSeason": [season], "CareerTotalsRegularSeason": []}))
-        with mock.patch.object(app_module, "nbacall_retry", side_effect=[info, profile]):
+        with mock.patch.object(nba_client, "nbacall_retry", side_effect=[info, profile]):
             data = self.client.get("/api/player/1?season=2024-25").get_json()
         sel = data["selected_season"]
         self.assertEqual(sel["TOV_TOTAL"], 200)
@@ -303,7 +409,7 @@ class HomeApiTest(unittest.TestCase):
              "teamTricode": "NYK", "wins": 27, "losses": 15, "score": 125},
         ])
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), games, teams_df]))
-        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint):
+        with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint):
             data = self.client.get("/api/games-today").get_json()
         game = data["games"][0]
         self.assertEqual((game["away"]["tricode"], game["away"]["score"]), ("NYK", 125))
@@ -374,14 +480,14 @@ class ShotChartApiTest(unittest.TestCase):
         df = pd.DataFrame({"LOC_X": [0, -220], "LOC_Y": [5, 10], "SHOT_MADE_FLAG": [1, 0],
                            "PERIOD": [1, 5], "SHOT_ZONE_BASIC": ["Restricted Area", "Left Corner 3"]})
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[df]))
-        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint) as call:
+        with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint) as call:
             data = self.client.get("/api/shot-chart/2544?season=2024-25").get_json()
         self.assertEqual(data["count"], 2)
         self.assertEqual(call.call_args.kwargs["context_measure_simple"], "FGA")
 
     def test_no_shots_is_404(self):
         endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame()]))
-        with mock.patch.object(app_module, "nbacall_retry", return_value=endpoint):
+        with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint):
             resp = self.client.get("/api/shot-chart/2544?season=1999-00")
         self.assertEqual(resp.status_code, 404)
 

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Court Vision fetcher: League tables, standings and teams every hour.
+  Replace /PATH/TO/CourtVision below, then install with:
+    cp deploy/macos/com.courtvision.fetcher.hourly.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.courtvision.fetcher.hourly.plist
+  Settings (URL, token) come from ~/.config/courtvision/publish.env; see scripts/run_fetcher.sh.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.courtvision.fetcher.hourly</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>/PATH/TO/CourtVision/scripts/run_fetcher.sh</string>
+      <string>hourly</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/courtvision-fetcher-hourly.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/courtvision-fetcher-hourly.log</string>
+  </dict>
+</plist>

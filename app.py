@@ -1,7 +1,10 @@
-import os
+import hmac
 import io
+import json
+import os
 import re
 import time
+import zlib
 import unicodedata
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -10,26 +13,23 @@ from functools import lru_cache
 import click
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file
-from nba_api.stats.endpoints import (
-    LeagueGameLog,
-    ScoreboardV3,
-    commonplayerinfo,
-    playerprofilev2,
-    shotchartdetail,
-    teamdashboardbygeneralsplits,
-)
+from nba_api.stats.endpoints import LeagueGameLog, teamdashboardbygeneralsplits
 from nba_api.stats.static import teams, players
 
+import nba_client
 from metrics import calculate_efficiency, calculate_true_shooting
 from nba_client import (
-    TTL_DEFAULT,
-    TTL_SHORT,
-    cached,
+    OFFLINE,
+    NBAUnavailable,
     get_league_player_stats,
     get_league_team_stats,
     get_player_gamelog,
+    get_player_info,
     get_player_positions,
+    get_player_profile,
+    get_scoreboard,
     get_seasons,
+    get_shot_chart,
     get_standings,
     get_team_estimated_metrics,
     get_team_gamelog_cached,
@@ -43,6 +43,7 @@ from nba_client import (
 # Flask app
 # ------------------------------------------------------------------------------
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # compressed upload limit (publishing)
 
 NAV_LINKS = [
     ("home", "Home"),
@@ -65,6 +66,14 @@ def inject_layout():
         "current_year": datetime.now().year,
     }
 
+HOSTED_MISSING = "This data hasn't been published to this site yet. Try the current season, or check back after the next update."
+
+def error_response(e, message, status=503):
+    """JSON error for an API route; hosted-mode misses get an explanation instead."""
+    if isinstance(e, NBAUnavailable):
+        return jsonify({"success": False, "error": HOSTED_MISSING, "hosted": True}), 503
+    return jsonify({"success": False, "error": message}), status
+
 @app.route("/")
 def home():
     # Games, leaders and standings load client-side so the page renders without
@@ -80,17 +89,13 @@ def api_games_today():
     # NBA schedules run on Eastern time, so "today" is the current date in New York.
     today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
 
-    def load():
-        frames = nbacall_retry(ScoreboardV3, game_date=today, league_id="00").get_data_frames()
-        games_df, teams_df = frames[1], frames[2]
-        return [_scoreboard_game(g, teams_df[teams_df["gameId"] == g["gameId"]]) for _, g in games_df.iterrows()]
-
     try:
-        games = cached(("games_today", today), TTL_SHORT, load)
+        games_df, teams_df = get_scoreboard(today)
+        games = [_scoreboard_game(g, teams_df[teams_df["gameId"] == g["gameId"]]) for _, g in games_df.iterrows()]
         return jsonify({"success": True, "date": today, "games": games, "count": len(games)})
     except Exception as e:
         print(f"[ERROR] /api/games-today: {e}")
-        return jsonify({"success": False, "error": "Unable to fetch today's games."}), 503
+        return error_response(e, "Unable to fetch today's games.")
 
 def _scoreboard_game(game, team_rows):
     """One ScoreboardV3 game with its two team rows -> card data for the home page."""
@@ -132,7 +137,7 @@ def api_league_leaders():
         df = get_league_player_stats(season)
     except Exception as e:
         print(f"[ERROR] /api/league-leaders: {e}")
-        return jsonify({"success": False, "error": "Unable to fetch league leaders."}), 503
+        return error_response(e, "Unable to fetch league leaders.")
 
     if df is None or df.empty:
         return jsonify({"success": True, "season": season, "leaders": {}})
@@ -191,7 +196,7 @@ def api_standings():
         df = get_standings(season)
     except Exception as e:
         print(f"[ERROR] /api/standings: {e}")
-        return jsonify({"success": False, "error": "Unable to fetch standings from NBA API."}), 503
+        return error_response(e, "Unable to fetch standings from NBA API.")
 
     if df is None or df.empty:
         return jsonify({"success": False, "error": f"No standings for {season}."}), 404
@@ -234,7 +239,10 @@ def api_team_monthly_series():
     if not team_id:
         return jsonify({"success": False, "error": "team_id required"}), 400
 
-    df = get_team_gamelog_cached(team_id, season, timeout_sec=30)  # longer timeout
+    try:
+        df = get_team_gamelog_cached(team_id, season, timeout_sec=30)  # longer timeout
+    except NBAUnavailable as e:
+        return error_response(e, "")
     if df is None or df.empty:
         return jsonify({"success": True, "months": [], "win_pct": [], "wins": [], "losses": []})
 
@@ -265,6 +273,11 @@ def api_team_stats(team_id):
 
     try:
         team_id_int = int(team_id)
+        if OFFLINE:
+            # The fallbacks below swallow errors and return zeros; in hosted mode a
+            # missing season should say so instead.
+            get_league_team_stats(season)
+            get_team_gamelog_cached(team_id_int, season)  # raises if not published
 
         gl_df = get_team_gamelog_cached(team_id_int, season, timeout_sec=30)
 
@@ -398,7 +411,7 @@ def api_team_stats(team_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": f"Server error fetching team stats: {str(e)}"}), 500
+        return error_response(e, f"Server error fetching team stats: {str(e)}", 500)
 
 @app.route("/api/roster-analysis/<team_id>")
 def api_roster_analysis(team_id):
@@ -452,7 +465,7 @@ def api_roster_analysis(team_id):
 
     except Exception as e:
         print(f"[ERROR] /api/roster-analysis/{team_id}: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return error_response(e, str(e), 500)
 
 @app.route("/api/players")
 def get_players():
@@ -558,9 +571,7 @@ def get_players():
 
     except Exception as e:
         print("Error in /api/players:", e)
-        return jsonify(
-            {"success": False, "error": "Unable to fetch player data from NBA API. Please try again later."}
-        ), 503
+        return error_response(e, "Unable to fetch player data from NBA API. Please try again later.")
 
 @app.route("/api/player/<int:player_id>")
 def get_player_detail(player_id: int):
@@ -589,19 +600,11 @@ def get_player_detail(player_id: int):
             pass
 
         # 1) Player bio
-        info_df = cached(
-            ("player_info", player_id),
-            TTL_DEFAULT,
-            lambda: nbacall_retry(commonplayerinfo.CommonPlayerInfo, player_id=player_id).get_data_frames()[0],
-        )
+        info_df = get_player_info(player_id)
         info = info_df.to_dict("records")[0] if len(info_df) > 0 else {}
 
         # 2) Player profile (regular season tables)
-        norm = cached(
-            ("player_profile", player_id),
-            TTL_DEFAULT,
-            lambda: nbacall_retry(playerprofilev2.PlayerProfileV2, player_id=player_id).get_normalized_dict(),
-        )
+        norm = get_player_profile(player_id)
 
         seasons_regular = norm.get("SeasonTotalsRegularSeason", []) or []
         career_regular  = norm.get("CareerTotalsRegularSeason", []) or []
@@ -704,7 +707,7 @@ def get_player_detail(player_id: int):
 
     except Exception as e:
         print(f"[ERROR] /api/player/{player_id}: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return error_response(e, str(e), 500)
 
 @app.route("/api/player/<int:player_id>/gamelog")
 def api_player_gamelog(player_id: int):
@@ -715,7 +718,7 @@ def api_player_gamelog(player_id: int):
         df = get_player_gamelog(player_id, season, season_type)
     except Exception as e:
         print(f"[ERROR] /api/player/{player_id}/gamelog: {e}")
-        return jsonify({"success": False, "error": "Unable to fetch game log from NBA API."}), 503
+        return error_response(e, "Unable to fetch game log from NBA API.")
 
     if df is None or df.empty:
         return jsonify({"success": True, "season": season, "season_type": season_type, "games": []})
@@ -738,21 +741,11 @@ def api_shot_chart(player_id: int):
     season = request.args.get("season", get_seasons()[0])
     season_type = parse_season_type(request.args.get("season_type"))
 
-    def load():
-        return nbacall_retry(
-            shotchartdetail.ShotChartDetail,
-            team_id=0,
-            player_id=player_id,
-            season_nullable=season,
-            season_type_all_star=season_type,
-            context_measure_simple="FGA",  # the default ("PTS") returns made shots only
-        ).get_data_frames()[0]
-
     try:
-        df = cached(("shot_chart", player_id, season, season_type), TTL_DEFAULT, load)
+        df = get_shot_chart(player_id, season, season_type)
     except Exception as e:
         print(f"[ERROR] /api/shot-chart/{player_id}: {e}")
-        return jsonify({"success": False, "error": "Unable to fetch shot data from NBA API."}), 503
+        return error_response(e, "Unable to fetch shot data from NBA API.")
 
     if df is None or df.empty:
         label = "playoff shots" if season_type == "Playoffs" else "shot data"
@@ -855,6 +848,79 @@ def search_players():
         print(f"Error in /api/search-players: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ------------------------------------------------------------------------------
+# Publishing: a fetcher (where stats.nba.com is reachable) sends cache entries to a
+# hosted copy running with COURTVISION_OFFLINE=1. See publish.py.
+# ------------------------------------------------------------------------------
+MAX_INGEST_BYTES = 256 * 1024 * 1024  # decompressed size cap per request
+
+@app.route("/api/admin/cache-entries", methods=["POST"])
+def api_ingest_cache_entries():
+    token = os.environ.get("COURTVISION_PUBLISH_TOKEN", "")
+    if not token:
+        return jsonify({"success": False, "error": "Not found"}), 404  # publishing disabled
+    supplied = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not hmac.compare_digest(supplied.encode(), token.encode()):
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if nba_client._DISK is None:
+        return jsonify({"success": False, "error": "Disk cache is disabled on this host"}), 503
+
+    try:
+        raw = request.get_data()
+        if request.headers.get("Content-Encoding") == "gzip":
+            inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            raw = inflater.decompress(raw, MAX_INGEST_BYTES)
+            if inflater.unconsumed_tail:
+                return jsonify({"success": False, "error": "Upload too large"}), 413
+        entries = json.loads(raw)
+        if not isinstance(entries, list):
+            raise ValueError("expected a list of entries")
+
+        stored = 0
+        latest_allowed = time.time() + 300
+        for item in entries:
+            key, ts = item["key"], float(item["ts"])
+            if not isinstance(key, str) or not key.startswith("(") or len(key) > 300 or ts > latest_allowed:
+                raise ValueError(f"invalid entry {str(key)[:60]}")
+            # Decode then re-encode: only values the JSON codec understands are stored.
+            nba_client._DISK.put_raw(key, ts, nba_client.dumps_value(nba_client.decode_value(item["value"])))
+            stored += 1
+    except (ValueError, KeyError, TypeError, zlib.error) as e:
+        return jsonify({"success": False, "error": f"Bad upload: {e}"}), 400
+
+    return jsonify({"success": True, "stored": stored})
+
+@app.cli.command("publish")
+@click.option("--url", required=True, help="Base URL of the hosted site, e.g. https://courtvision.example.com")
+@click.option("--season", default=None, help="Season like 2025-26 (default: the current season).")
+@click.option("--players", is_flag=True, help="Also fetch every active player's pages (nightly; ~4 requests per player).")
+@click.option("--live", is_flag=True, help="Only refresh today's scoreboard (cheap; for every few minutes).")
+@click.option("--full", is_flag=True, help="Resend all cached entries, not just new ones (for a fresh host).")
+def publish_command(url, season, players, live, full):
+    """Fetch NBA data here and publish it to a hosted site (token: COURTVISION_PUBLISH_TOKEN)."""
+    import publish
+
+    token = os.environ.get("COURTVISION_PUBLISH_TOKEN")
+    if not token:
+        raise click.UsageError("Set COURTVISION_PUBLISH_TOKEN to the hosted site's publish token.")
+
+    started = time.time()
+    last_report = [0.0]
+
+    def progress(done, total, name):
+        if time.time() - last_report[0] > 15 or done == total:
+            last_report[0] = time.time()
+            click.echo(f"  fetched {done}/{total}")
+
+    result = warm_cache(season, include_players=players, live_only=live, progress=progress)
+    click.echo(f"Fetched {len(result['ok'])} datasets for {result['season']} ({len(result['failed'])} failed) "
+               f"in {time.time() - started:.0f}s")
+    for name, error in list(result["failed"].items())[:10]:
+        click.echo(f"  failed: {name}: {error}", err=True)
+
+    summary = publish.publish(url, token, full=full, echo=click.echo)
+    click.echo(f"Published {summary['sent']} entries to {url} (through {summary['published_through']})")
 
 @app.cli.command("warm-cache")
 @click.option("--season", default=None, help="Season like 2025-26 (default: the current season).")
