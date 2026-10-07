@@ -99,9 +99,7 @@
 
   async function loadPlayer() {
     try {
-      const res = await fetch(`/api/player/${playerId}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'player api failed');
+      const data = await SiteData.get(`player/${playerId}.json`);
       payload = data;
 
       renderHeader(data.player_info || {});
@@ -115,7 +113,8 @@
       }
     } catch (e) {
       console.error(e);
-      document.getElementById('overview-tab').innerHTML = '<p class="error">Failed to load player.</p>';
+      const error = Object.assign(document.createElement('p'), { className: 'error', textContent: e.message });
+      document.getElementById('overview-tab').replaceChildren(error);
       document.getElementById('season-list').innerHTML = '<li class="error">Failed to load seasons.</li>';
     }
   }
@@ -160,7 +159,7 @@
     });
   }
 
-  async function selectSeason(seasonId) {
+  function selectSeason(seasonId) {
     currentSeason = seasonId;
     UrlState.set({ season: seasonId });
     loadGameLog(seasonId);
@@ -170,29 +169,17 @@
       btn.setAttribute('aria-current', active ? 'true' : 'false');
     });
 
-    // Keep the current season's stats on screen, dimmed, until the new ones arrive
-    const statsPanel = document.querySelector('.stats-content');
-    const overview = document.getElementById('overview-tab');
-    if (overview.querySelector('.stats-grid')) UI.refreshing(statsPanel, true);
-    else UI.skeleton(overview, 'rows', 10);
-
-    try {
-      const res = await fetch(`/api/player/${playerId}?season=${encodeURIComponent(seasonId)}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'player api failed');
-      payload = data;
-      const sel = data.selected_season;
-      updateSeasonContext(sel);
-      renderBadges(sel);
-      renderOverview(sel, data.seasons_regular || []);
-    } catch (e) {
-      console.error(e);
+    const seasons = payload.seasons_regular || [];
+    const sel = seasons.find(r => r.SEASON_ID === seasonId);
+    if (!sel) {
       updateSeasonContext(null);
       document.getElementById('overview-tab').innerHTML = `<p class="no-data">No Regular Season data for ${seasonId}.</p>`;
       document.getElementById('badges').innerHTML = '';
-    } finally {
-      if (currentSeason === seasonId) UI.refreshing(statsPanel, false);
+      return;
     }
+    updateSeasonContext(sel);
+    renderBadges(sel);
+    renderOverview(sel, seasons);
   }
 
   function updateSeasonContext(sel) {
@@ -353,7 +340,7 @@
       body.hidden = true;
     };
 
-    // Hosted copies only have some seasons' game logs (null: every season can be fetched).
+    // The site only has some seasons' game logs (null: every season can be fetched).
     const available = payload?.gamelog_seasons?.[type];
     if (available && !available.includes(seasonId)) {
       UI.refreshing(body, false);
@@ -363,10 +350,8 @@
     }
 
     try {
-      const res = await fetch(`/api/player/${playerId}/gamelog?season=${encodeURIComponent(seasonId)}&season_type=${type}`);
-      const data = await res.json();
+      const data = await SiteData.get(`player/${playerId}/gamelog/${seasonId}/${type}.json`);
       if (requestId !== gameLogRequest) return;  // a newer season/type was selected
-      if (!data.success) throw new Error(data.error);
       gameLog = data.games;
       if (!gameLog.length) {
         showMessage(type === 'playoffs' ? `No playoff games in ${seasonId}.` : `No games logged for ${seasonId}.`);

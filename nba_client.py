@@ -8,8 +8,8 @@ Configuration (environment variables):
   NBA_TIMEOUT        request timeout in seconds (default 30)
   COURTVISION_CACHE  path of the SQLite cache file (default instance/cache.sqlite3);
                      "off" disables the disk layer
-  COURTVISION_OFFLINE  "1" = hosted mode: never call stats.nba.com; serve only data
-                     published into the cache by a fetcher (see publish.py)
+  COURTVISION_OFFLINE  "1" = offline mode: never call stats.nba.com; serve only data
+                     already in the cache (what the static site has; see build.py)
 """
 import ast
 import json
@@ -61,7 +61,7 @@ DEFAULT_TIMEOUT = int(os.environ.get("NBA_TIMEOUT", "30"))
 OFFLINE = os.environ.get("COURTVISION_OFFLINE", "0") == "1"
 
 class NBAUnavailable(Exception):
-    """Raised instead of calling stats.nba.com when running in hosted (offline) mode."""
+    """Raised instead of calling stats.nba.com in offline mode (COURTVISION_OFFLINE=1, and builds)."""
 
 # First season covered by the league dashboard, advanced stats and shot chart endpoints.
 FIRST_STATS_SEASON_YEAR = 1996
@@ -79,7 +79,7 @@ def parse_season_type(value) -> str:
 TTL_SHORT = 120          # 2 minutes (live scoreboard)
 TTL_DEFAULT = 1800       # 30 minutes (season stats)
 TTL_LONG = 24 * 3600     # 1 day (player index / positions)
-DISK_MAX_AGE = 7 * 24 * 3600  # entries older than this are pruned at startup
+SCOREBOARD_MAX_AGE = 7 * 24 * 3600  # past days' scoreboards older than this are pruned at startup
 
 # ------------------------------------------------------------------------------
 # Value codec: cached values as tagged JSON (never pickle), so cache entries can
@@ -184,9 +184,12 @@ class DiskCache:
         with self._db() as db:
             return [row[0] for row in db.execute(f"SELECT key FROM {self.TABLE}")]
 
-    def prune(self, max_age: float):
+    def prune_scoreboards(self, max_age: float):
+        """Drop old daily scoreboards. Everything else is kept: the static site is built
+        from this cache, so past seasons stay on the site once fetched."""
         with self._db() as db:
-            db.execute(f"DELETE FROM {self.TABLE} WHERE ts < ?", (_now() - max_age,))
+            db.execute(f"DELETE FROM {self.TABLE} WHERE ts < ? AND key LIKE ?",
+                       (_now() - max_age, "('scoreboard', %"))
 
 def _open_disk_cache():
     path = os.environ.get("COURTVISION_CACHE", os.path.join(os.path.dirname(__file__), "instance", "cache.sqlite3"))
@@ -194,7 +197,7 @@ def _open_disk_cache():
         return None
     try:
         disk = DiskCache(path)
-        disk.prune(DISK_MAX_AGE)
+        disk.prune_scoreboards(SCOREBOARD_MAX_AGE)
         return disk
     except Exception as e:
         print(f"[WARN] disk cache disabled ({path}): {e}")
@@ -229,7 +232,7 @@ def cached(key, ttl: int, loader):
         value = loader()
     except Exception as e:
         if entry:
-            if not isinstance(e, NBAUnavailable):  # expected on every request in hosted mode
+            if not isinstance(e, NBAUnavailable):  # expected on every cache miss in offline mode
                 print(f"[WARN] serving stale cache for {key} due to: {e}")
             return entry["value"]
         raise
@@ -241,8 +244,8 @@ def cached(key, ttl: int, loader):
     return value
 
 # ------------------------------------------------------------------------------
-# What a hosted copy holds. In hosted mode only published data can be served, so
-# pages offer just the seasons, players and season types that were published.
+# What goes on the site. In offline mode (and every build) only cached data can be
+# served, so pages offer just the seasons, players and season types in the cache.
 # ------------------------------------------------------------------------------
 ANY = object()     # published_seasons() pattern part: matches anything
 SEASON = object()  # published_seasons() pattern part: the season to report
@@ -252,8 +255,8 @@ _PUBLISHED = {"ts": 0.0, "keys": frozenset()}
 
 def published_keys():
     """
-    Cache-key tuples a hosted copy holds, re-read at most once a minute. None when
-    anything can be fetched on demand (not hosted mode, or no disk cache to read).
+    Cache-key tuples on disk, re-read at most once a minute. None when anything can
+    be fetched on demand (not offline mode, or no disk cache to read).
     """
     if not OFFLINE or _DISK is None:
         return None
@@ -304,7 +307,7 @@ def published_player_ids():
 def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
     """
     Fetch TeamGameLog, cached for 30min. Returns an empty DataFrame on failure, except
-    in hosted mode, where unpublished data raises NBAUnavailable.
+    in offline mode, where uncached data raises NBAUnavailable.
     """
     def load():
         df = nbacall_retry(
@@ -319,7 +322,7 @@ def get_team_gamelog_cached(team_id: int, season: str, timeout_sec: int = 10):
     try:
         return cached(("team_gamelog", int(team_id), season), TTL_DEFAULT, load)
     except NBAUnavailable:
-        raise  # hosted mode: "not published" must not look like "no games played"
+        raise  # offline mode: "not fetched" must not look like "no games played"
     except Exception as e:
         print(f"[WARN] get_team_gamelog_cached failed: {e}")
         return pd.DataFrame()
@@ -481,7 +484,7 @@ def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs
     a simple retry with linear backoff.
     """
     if OFFLINE:
-        raise NBAUnavailable(f"{endpoint_cls.__name__}: hosted mode serves published data only")
+        raise NBAUnavailable(f"{endpoint_cls.__name__}: offline mode serves cached data only")
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
     if PROXY:
         kwargs.setdefault("proxy", PROXY)
@@ -503,7 +506,7 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
                live_only: bool = False, progress=None) -> dict:
     """
     Pre-fetch data into the cache so pages don't wait on the NBA API (and so a fetcher
-    can publish it to a hosted copy of the site).
+    can build the static site from it).
 
     - live_only: just today's scoreboard (cheap; run every few minutes during games)
     - default: league tables, standings, positions, today's scoreboard and, with

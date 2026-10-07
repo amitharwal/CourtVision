@@ -96,9 +96,7 @@
     if (q.length < 2) return out.style.display = 'none';
 
     try {
-      const res = await fetch(`/api/search-players?q=${encodeURIComponent(q)}`);
-      const { players, success } = await res.json();
-      if (success) displaySearchResults(players);
+      displaySearchResults(await SiteData.searchPlayers(q));
     } catch (e) {
       console.error(e);
     }
@@ -164,18 +162,12 @@
     UrlState.set({ season, type: playoffs ? 'playoffs' : 'regular' });
 
     try {
-      const results = await Promise.all(
-        selectedPlayers.map(p =>
-          fetch(`/api/player/${p.id}?season=${season}`)
-            .then(r => r.json())
-        )
-      );
+      const results = await Promise.all(selectedPlayers.map(p => SiteData.get(`player/${p.id}.json`)));
 
       playerStats = {};
       const missing = [];
       results.forEach((res, idx) => {
-        if (!res.success) throw new Error(res.error || 'API error');
-        // Season rows from /api/player; a traded player has one row per team
+        // Season rows from data/player/<id>.json; a traded player has one row per team
         // plus a combined "TOT" row, which is the one to compare.
         const seasonRows = (playoffs ? res.seasons_postseason : res.seasons_regular) || [];
         const rows = seasonRows.filter(r => r.SEASON_ID === season);

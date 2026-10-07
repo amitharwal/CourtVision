@@ -1,6 +1,6 @@
 # Test isolation (set before app/nba_client are imported):
 # - keep tests off the real on-disk cache
-# - hosted mode, so any NBA API call a test forgets to mock fails fast instead of
+# - offline mode, so any NBA API call a test forgets to mock fails fast instead of
 #   reaching stats.nba.com
 import os
 

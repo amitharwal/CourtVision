@@ -27,8 +27,11 @@ const UrlState = {
 
   async playerNames(ids) {
     if (!ids.length) return [];
-    const res = await fetch(`/api/search-players?ids=${ids.join(',')}`);
-    const data = await res.json();
-    return data.success ? data.players : [];
+    try {
+      return await SiteData.playersById(ids);
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
   },
 };

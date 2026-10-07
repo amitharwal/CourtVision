@@ -1,7 +1,7 @@
 # Can a cloud machine reach stats.nba.com? GitHub's runners are Azure VMs, so this
-# is a cheap stand-in for "will the NBA API work from a hosted server".
-# As of Oct 2026 it can't (every endpoint times out), which is why the hosted site
-# runs with COURTVISION_OFFLINE=1 and gets its data from a fetcher (see README).
+# is a cheap stand-in for "will the NBA API work from a cloud server".
+# As of Oct 2026 it can't (every endpoint times out), which is why the site is built
+# on a machine the NBA doesn't block and deployed as static files (see README).
 # Runs weekly and on demand only, so a known block doesn't mark every PR red.
 name: NBA API connectivity
 

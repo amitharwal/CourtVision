@@ -5,7 +5,7 @@
   Replace /PATH/TO/CourtVision below, then install with:
     cp deploy/macos/com.courtvision.fetcher.hourly.plist ~/Library/LaunchAgents/
     launchctl load ~/Library/LaunchAgents/com.courtvision.fetcher.hourly.plist
-  Settings (URL, token) come from ~/.config/courtvision/publish.env; see scripts/run_fetcher.sh.
+  Settings (Cloudflare token and account) come from ~/.config/courtvision/deploy.env; see scripts/run_fetcher.sh.
 -->
 <plist version="1.0">
   <dict>

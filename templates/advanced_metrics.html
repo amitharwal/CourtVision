@@ -139,7 +139,7 @@
         };
 
         let currentMetric = 'TS_PCT';
-        let allPlayers = [];   // everything /api/players returned for the loaded season
+        let allPlayers = [];   // every player in the loaded season's data file
         let playersData = [];  // allPlayers after the min games / min attempts filters
         let loadedLabel = '';  // e.g. "2024-25 playoff", for empty-state messages
 
@@ -233,23 +233,15 @@
             });
 
             try {
-                // Load player data with metrics
-                const response = await fetch(`/api/players?season=${season}&sort_by=${currentMetric}&season_type=${seasonType}`);
-                const data = await response.json();
-
-                if (data.success) {
-                    allPlayers = data.data;
-                    loadedLabel = `${season} ${seasonType === 'playoffs' ? 'playoff' : 'regular-season'}`;
-                    applyFilters();
-                } else {
-                    allPlayers = [];
-                    document.getElementById('metrics-visualization').style.display = 'block';
-                    showMessage(data.error || 'Failed to load metrics data.');
-                }
+                const data = await SiteData.get(`players/${season}/${seasonType}.json`);
+                allPlayers = data.data;
+                loadedLabel = `${season} ${seasonType === 'playoffs' ? 'playoff' : 'regular-season'}`;
+                applyFilters();
             } catch (error) {
                 console.error(error);
+                allPlayers = [];
                 document.getElementById('metrics-visualization').style.display = 'block';
-                showMessage('Error loading metrics. Please try again.');
+                showMessage(error.message);
             } finally {
                 showLoading(false);
                 panels.forEach(el => UI.refreshing(el, false));
