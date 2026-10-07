@@ -115,6 +115,57 @@ class DiskCacheTest(unittest.TestCase):
         self.assertEqual(self.disk.get(("scoreboard", "2026-10-05"))[1], 3)
 
 
+class PlayerRefreshTest(unittest.TestCase):
+    """warm_cache skips players with no new games since their data was fetched."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.disk = nba_client.DiskCache(os.path.join(self.tmp.name, "cache.sqlite3"))
+        patcher = mock.patch.object(nba_client, "_DISK", self.disk)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        nba_client._CACHE.clear()
+
+    def store_player(self, pid, games, age=0):
+        ts = time.time() - age
+        log = pd.DataFrame({"Game_ID": [str(i) for i in range(games)]})
+        for key, value in [(("player_info", pid), pd.DataFrame()), (("player_profile", pid), {}),
+                           (("player_gamelog", pid, "2025-26", "Regular Season"), log),
+                           (("shot_chart", pid, "2025-26", "Regular Season"), pd.DataFrame())]:
+            self.disk.set(key, ts, value)
+
+    def unchanged(self, pid, games):
+        return nba_client._player_unchanged(pid, "2025-26", "Regular Season",
+                                            ("info", "profile", "game log", "shot chart"), games)
+
+    def test_same_games_played_is_unchanged(self):
+        self.store_player(1, games=3)
+        self.assertTrue(self.unchanged(1, 3))
+
+    def test_new_game_means_refetch(self):
+        self.store_player(1, games=3)
+        self.assertFalse(self.unchanged(1, 4))
+
+    def test_missing_or_week_old_data_means_refetch(self):
+        self.assertFalse(self.unchanged(1, 0))
+        self.store_player(2, games=3, age=8 * 24 * 3600)
+        self.assertFalse(self.unchanged(2, 3))
+
+    def test_warm_cache_fetches_only_changed_players(self):
+        self.store_player(1, games=3)
+        league = pd.DataFrame({"PLAYER_ID": [1, 2], "GP": [3, 5]})
+        tables = {"Regular Season": league, "Playoffs": league.iloc[0:0]}
+        fetched = []
+        with mock.patch.object(nba_client, "get_league_player_stats",
+                               side_effect=lambda season, measure="Base", season_type="Regular Season": tables[season_type]), \
+                mock.patch.object(nba_client, "_player_job",
+                                  side_effect=lambda pid, *a: (lambda: fetched.append(pid))):
+            result = nba_client.warm_cache("2025-26", include_teams=False, include_players=True)
+        self.assertEqual(set(fetched), {2})
+        self.assertEqual(result["unchanged"], 1)
+
+
 class CodecTest(unittest.TestCase):
     def roundtrip(self, value):
         return nba_client.loads_value(nba_client.dumps_value(value))

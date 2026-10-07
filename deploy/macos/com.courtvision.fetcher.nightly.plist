@@ -13,6 +13,9 @@
     <string>com.courtvision.fetcher.nightly</string>
     <key>ProgramArguments</key>
     <array>
+      <!-- caffeinate: keep the Mac awake until the run finishes -->
+      <string>/usr/bin/caffeinate</string>
+      <string>-i</string>
       <string>/bin/bash</string>
       <string>/PATH/TO/CourtVision/scripts/run_fetcher.sh</string>
       <string>nightly</string>

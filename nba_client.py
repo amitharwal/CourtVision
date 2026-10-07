@@ -498,6 +498,40 @@ def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs
     if last_err:
         raise last_err
 
+PLAYER_REFRESH_AGE = 7 * 24 * 3600  # refetch every player at least weekly (trades, bios)
+
+def _games_played(season: str, season_type: str) -> dict:
+    """{player_id: games played} from the league player table."""
+    df = get_league_player_stats(season, "Base", season_type)
+    return {int(r.PLAYER_ID): int(r.GP) for r in df.itertuples()}
+
+def _player_job(pid: int, season: str, season_type: str, kind: str):
+    """A warm_cache job fetching one kind of player data."""
+    return {
+        "info": lambda: get_player_info(pid),
+        "profile": lambda: get_player_profile(pid),
+        "game log": lambda: get_player_gamelog(pid, season, season_type),
+        "shot chart": lambda: get_shot_chart(pid, season, season_type),
+    }[kind]
+
+def _player_unchanged(pid: int, season: str, season_type: str, kinds, games_played: int) -> bool:
+    """
+    True when every kind of this player's data is on disk, under PLAYER_REFRESH_AGE
+    old, and the cached game log has games_played games: there's nothing new to fetch.
+    """
+    if _DISK is None:
+        return False
+    keys = {
+        "info": ("player_info", pid),
+        "profile": ("player_profile", pid),
+        "game log": ("player_gamelog", pid, season, season_type),
+        "shot chart": ("shot_chart", pid, season, season_type),
+    }
+    stored = {kind: _DISK.get(keys[kind]) for kind in kinds}
+    if any(entry is None or _now() - entry[0] > PLAYER_REFRESH_AGE for entry in stored.values()):
+        return False
+    return len(stored["game log"][1]) == games_played
+
 def warm_cache(season: str = None, include_teams: bool = True, include_players: bool = False,
                live_only: bool = False, progress=None) -> dict:
     """
@@ -511,7 +545,9 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
       shot chart for the season (~4 requests per player; run nightly), plus the
       playoff game log and shot chart of everyone who played in the playoffs
     progress(done, total, name) is called after each job if given.
-    Returns {"season", "ok": [...], "failed": {name: error}}.
+    Players whose games-played count matches their cached game log are skipped
+    (nothing new since the last fetch), unless their data is over a week old.
+    Returns {"season", "ok": [...], "failed": {name: error}, "unchanged": players skipped}.
     """
     from zoneinfo import ZoneInfo
 
@@ -552,34 +588,26 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
         if progress:
             progress(i, total, name)
 
+    unchanged = 0
     if include_players and not live_only:
-        try:
-            player_ids = [int(pid) for pid in get_league_player_stats(season)["PLAYER_ID"]]
-        except Exception as e:
-            failed["player list"] = str(e)
-            player_ids = []
-        try:
-            playoff_ids = [int(pid) for pid in get_league_player_stats(season, "Base", "Playoffs")["PLAYER_ID"]]
-        except Exception as e:
-            failed["playoff player list"] = str(e)
-            playoff_ids = []
         player_jobs = []
-        for pid in player_ids:
-            player_jobs += [
-                (f"player {pid} info", lambda pid=pid: get_player_info(pid)),
-                (f"player {pid} profile", lambda pid=pid: get_player_profile(pid)),
-                (f"player {pid} game log", lambda pid=pid: get_player_gamelog(pid, season)),
-                (f"player {pid} shot chart", lambda pid=pid: get_shot_chart(pid, season)),
-            ]
-        for pid in playoff_ids:
-            player_jobs += [
-                (f"player {pid} playoff game log", lambda pid=pid: get_player_gamelog(pid, season, "Playoffs")),
-                (f"player {pid} playoff shot chart", lambda pid=pid: get_shot_chart(pid, season, "Playoffs")),
-            ]
+        for season_type, kinds in (("Regular Season", ("info", "profile", "game log", "shot chart")),
+                                   ("Playoffs", ("game log", "shot chart"))):
+            try:
+                games = _games_played(season, season_type)
+            except Exception as e:
+                failed[f"{season_type} player list"] = str(e)
+                continue
+            for pid, gp in games.items():
+                if _player_unchanged(pid, season, season_type, kinds, gp):
+                    unchanged += 1
+                    continue
+                player_jobs += [(f"player {pid} {season_type} {kind}", _player_job(pid, season, season_type, kind))
+                                for kind in kinds]
         total += len(player_jobs)
         for i, (name, job) in enumerate(player_jobs, len(jobs) + 1):
             run(name, job)
             if progress:
                 progress(i, total, name)
 
-    return {"season": season, "ok": ok, "failed": failed}
+    return {"season": season, "ok": ok, "failed": failed, "unchanged": unchanged}

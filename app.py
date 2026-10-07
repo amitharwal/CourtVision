@@ -879,8 +879,8 @@ def update_command(season, players, live, no_deploy):
             click.echo(f"  fetched {done}/{total}")
 
     result = warm_cache(season, include_players=players, live_only=live, progress=progress)
-    click.echo(f"Fetched {len(result['ok'])} datasets for {result['season']} ({len(result['failed'])} failed) "
-               f"in {time.time() - started:.0f}s")
+    click.echo(f"Fetched {len(result['ok'])} datasets for {result['season']} ({len(result['failed'])} failed, "
+               f"{result['unchanged']} players unchanged) in {time.time() - started:.0f}s")
     for name, error in list(result["failed"].items())[:10]:
         click.echo(f"  failed: {name}: {error}", err=True)
 
