@@ -154,6 +154,18 @@ class PlayerRefreshTest(unittest.TestCase):
         self.store_player(2, games=3, age=8 * 24 * 3600)
         self.assertEqual(self.to_fetch(2, 3), ["info"])
 
+    def test_empty_nba_answer_is_not_asked_again_for_a_week(self):
+        self.store_player(1, games=3)
+        key = ("shot_chart", 1, "2025-26", "Playoffs")
+        to_fetch = lambda: nba_client._player_kinds_to_fetch(1, "2025-26", "Playoffs", ("shot chart",), 3)
+        self.assertEqual(to_fetch(), ["shot chart"])
+        empty = json.JSONDecodeError("Expecting value", "", 0)
+        with mock.patch.object(nba_client, "get_shot_chart", side_effect=empty), self.assertRaises(json.JSONDecodeError):
+            nba_client._player_job(1, "2025-26", "Playoffs", "shot chart")()
+        self.assertEqual(to_fetch(), [])
+        with mock.patch.object(nba_client, "_now", return_value=time.time() + 8 * 24 * 3600):
+            self.assertEqual(to_fetch(), ["shot chart"])
+
     def test_warm_cache_fetches_only_changed_players(self):
         self.store_player(1, games=3)
         league = pd.DataFrame({"PLAYER_ID": [1, 2], "GP": [3, 5]})

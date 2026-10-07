@@ -30,4 +30,5 @@ case "${1:-}" in
 esac
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] update $1"
-exec "$PYTHON" -m flask --app app update "${mode[@]}"
+# ${mode[@]+...}: macOS's bash 3.2 treats an empty array as unset under `set -u`.
+exec "$PYTHON" -m flask --app app update ${mode[@]+"${mode[@]}"}

@@ -136,6 +136,7 @@ class DiskCache:
         with self._db() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.execute(f"CREATE TABLE IF NOT EXISTS {self.TABLE} (key TEXT PRIMARY KEY, ts REAL, value BLOB)")
+            db.execute("CREATE TABLE IF NOT EXISTS no_data (key TEXT PRIMARY KEY, ts REAL)")
 
     @contextmanager
     def _db(self):
@@ -177,6 +178,17 @@ class DiskCache:
         """(key_text, ts, blob) for entries newer than ts, oldest first."""
         with self._db() as db:
             return db.execute(f"SELECT key, ts, value FROM {self.TABLE} WHERE ts > ? ORDER BY ts", (ts,)).fetchall()
+
+    def mark_no_data(self, key):
+        """Record that the NBA answered this request with nothing (see warm_cache)."""
+        with self._db() as db:
+            db.execute("INSERT OR REPLACE INTO no_data (key, ts) VALUES (?, ?)", (repr(key), _now()))
+
+    def no_data_since(self, key):
+        """When the NBA last answered this request with nothing, or None."""
+        with self._db() as db:
+            rows = db.execute("SELECT ts FROM no_data WHERE key = ?", (repr(key),)).fetchall()
+        return rows[0][0] if rows else None
 
     def keys(self):
         """Every stored key (the repr() text)."""
@@ -499,42 +511,65 @@ def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs
         raise last_err
 
 PLAYER_REFRESH_AGE = 7 * 24 * 3600  # refetch player bios at least weekly (trades, jerseys)
+NO_DATA_RETRY_AGE = 7 * 24 * 3600   # re-ask for data the NBA answered with nothing after a week
 
 def _games_played(season: str, season_type: str) -> dict:
     """{player_id: games played} from the league player table."""
     df = get_league_player_stats(season, "Base", season_type)
     return {int(r.PLAYER_ID): int(r.GP) for r in df.itertuples()}
 
+def _player_key(pid: int, season: str, season_type: str, kind: str):
+    """The cache key of one kind of player data."""
+    return {
+        "info": ("player_info", pid),
+        "profile": ("player_profile", pid),
+        "game log": ("player_gamelog", pid, season, season_type),
+        "shot chart": ("shot_chart", pid, season, season_type),
+    }[kind]
+
 def _player_job(pid: int, season: str, season_type: str, kind: str):
     """A warm_cache job fetching one kind of player data."""
-    return {
+    fetch = {
         "info": lambda: get_player_info(pid),
         "profile": lambda: get_player_profile(pid),
         "game log": lambda: get_player_gamelog(pid, season, season_type),
         "shot chart": lambda: get_shot_chart(pid, season, season_type),
     }[kind]
 
+    def job():
+        try:
+            fetch()
+        except json.JSONDecodeError:
+            # An empty body, every time for some requests (e.g. rookies' playoff shot
+            # charts as of Oct 2026): don't ask again for NO_DATA_RETRY_AGE.
+            if _DISK is not None:
+                _DISK.mark_no_data(_player_key(pid, season, season_type, kind))
+            raise
+    return job
+
 def _player_kinds_to_fetch(pid: int, season: str, season_type: str, kinds, games_played: int) -> list:
     """
     Which kinds of this player's data need fetching. Stats (profile, game log, shot
     chart) only change when the player plays, so they're refetched when missing or when
     games_played differs from the cached game log. The bio (team, jersey) can change
-    without games, so it's refetched once it's over PLAYER_REFRESH_AGE old.
+    without games, so it's refetched once it's over PLAYER_REFRESH_AGE old. Data the
+    NBA recently answered with nothing is left alone for NO_DATA_RETRY_AGE.
     """
     if _DISK is None:
         return list(kinds)
-    keys = {
-        "info": ("player_info", pid),
-        "profile": ("player_profile", pid),
-        "game log": ("player_gamelog", pid, season, season_type),
-        "shot chart": ("shot_chart", pid, season, season_type),
-    }
-    stored = {kind: _DISK.get(keys[kind]) for kind in kinds}
+    stored = {kind: _DISK.get(_player_key(pid, season, season_type, kind)) for kind in kinds}
     log = stored.get("game log")
     new_games = log is None or len(log[1]) != games_played
-    return [kind for kind, entry in stored.items()
-            if entry is None or new_games and kind != "info"
-            or kind == "info" and _now() - entry[0] > PLAYER_REFRESH_AGE]
+
+    def needed(kind, entry):
+        if entry is None:
+            no_data = _DISK.no_data_since(_player_key(pid, season, season_type, kind))
+            return no_data is None or _now() - no_data > NO_DATA_RETRY_AGE
+        if kind == "info":
+            return _now() - entry[0] > PLAYER_REFRESH_AGE
+        return new_games
+
+    return [kind for kind, entry in stored.items() if needed(kind, entry)]
 
 def warm_cache(season: str = None, include_teams: bool = True, include_players: bool = False,
                live_only: bool = False, progress=None) -> dict:
