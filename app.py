@@ -32,7 +32,6 @@ from nba_client import (
     get_standings,
     get_team_estimated_metrics,
     get_team_gamelog_cached,
-    get_team_player_dashboard,
     nbacall_retry,
     parse_season_type,
     published_player_ids,
@@ -450,10 +449,14 @@ def team_stats(team_id_int: int, season: str) -> dict:
     return stats_dict
 
 def roster_leaders(team_id: int, season: str) -> dict:
-    """The team's top scorer, rebounder, playmaker and most efficient player per game."""
-    dfs = get_team_player_dashboard(team_id, season)
-    stats = dfs[1] if len(dfs) > 1 else pd.DataFrame()
-    if stats is None or stats.empty:
+    """
+    The team's top scorer, rebounder, playmaker and most efficient player per game,
+    from the league player table (TeamPlayerDashboard returns nothing as of Oct 2026).
+    A player traded mid-season counts for his latest team, with his full-season totals.
+    """
+    league = get_league_player_stats(season)
+    stats = league[league["TEAM_ID"] == int(team_id)]
+    if stats.empty:
         return {
             "top_scorer": {"name": "N/A", "stat": 0},
             "top_rebounder": {"name": "N/A", "stat": 0},

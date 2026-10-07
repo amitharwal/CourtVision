@@ -31,9 +31,8 @@ from nba_api.stats.endpoints import (
     PlayerGameLog,
     ScoreboardV3,
     TeamGameLog,
-    TeamPlayerDashboard,
     commonplayerinfo,
-    playerprofilev2,
+    playercareerstats,
     shotchartdetail,
     leaguedashplayerstats,
     leaguedashteamstats,
@@ -386,13 +385,6 @@ def get_player_gamelog(player_id: int, season: str, season_type: str = "Regular 
 
     return cached(("player_gamelog", player_id, season, season_type), TTL_DEFAULT, load)
 
-def get_team_player_dashboard(team_id, season: str):
-    """TeamPlayerDashboard data frames (index 1 = per-player season totals), cached for 30min."""
-    def load():
-        return nbacall_retry(TeamPlayerDashboard, team_id=int(team_id), season=season).get_data_frames()
-
-    return cached(("team_player_dashboard", int(team_id), season), TTL_DEFAULT, load)
-
 def get_scoreboard(game_date: str):
     """ScoreboardV3 for a YYYY-MM-DD date as [games_df, teams_df], cached for 2min."""
     def load():
@@ -410,11 +402,15 @@ def get_player_info(player_id: int):
     )
 
 def get_player_profile(player_id: int):
-    """PlayerProfileV2 as a normalized dict of season/career tables, cached for 30min."""
+    """
+    A player's season and career tables (SeasonTotalsRegularSeason, ...) as a
+    normalized dict, cached for 30min. From PlayerCareerStats: PlayerProfileV2 has
+    the same tables but stalls for many players (Oct 2026).
+    """
     return cached(
         ("player_profile", int(player_id)),
         TTL_DEFAULT,
-        lambda: nbacall_retry(playerprofilev2.PlayerProfileV2, player_id=player_id).get_normalized_dict(),
+        lambda: nbacall_retry(playercareerstats.PlayerCareerStats, player_id=player_id).get_normalized_dict(),
     )
 
 def get_shot_chart(player_id: int, season: str, season_type: str = "Regular Season"):
@@ -540,7 +536,6 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
             for team in static_teams.get_teams():
                 tid, abbr = team["id"], team["abbreviation"]
                 jobs.append((f"{abbr} game log", lambda tid=tid: get_team_gamelog_cached(tid, season, timeout_sec=DEFAULT_TIMEOUT)))
-                jobs.append((f"{abbr} roster", lambda tid=tid: get_team_player_dashboard(tid, season)))
 
     ok, failed = [], {}
 

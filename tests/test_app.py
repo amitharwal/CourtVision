@@ -428,18 +428,20 @@ class GameLogApiTest(unittest.TestCase):
         self.assertEqual(data["games"], [])
 
 
-class RosterAnalysisApiTest(unittest.TestCase):
-    def test_most_efficient_is_per_game(self):
-        nba_client._CACHE.clear()
-        roster = pd.DataFrame([{"PLAYER_ID": 77, "PLAYER_NAME": "Star", "GP": 10, "PTS": 300, "REB": 50, "AST": 60,
-                                "STL": 10, "BLK": 5, "FGA": 200, "FGM": 100, "FTA": 50, "FTM": 40, "TOV": 25}])
-        endpoint = mock.Mock(get_data_frames=mock.Mock(return_value=[pd.DataFrame(), roster]))
-        with mock.patch.object(nba_client, "nbacall_retry", return_value=endpoint):
+class RosterLeadersTest(unittest.TestCase):
+    def test_team_leaders_per_game_from_league_table(self):
+        league = pd.DataFrame([
+            {"PLAYER_ID": 77, "PLAYER_NAME": "Star", "TEAM_ID": 1, "GP": 10, "PTS": 300, "REB": 50, "AST": 60,
+             "STL": 10, "BLK": 5, "FGA": 200, "FGM": 100, "FTA": 50, "FTM": 40, "TOV": 25},
+            {"PLAYER_ID": 88, "PLAYER_NAME": "Elsewhere", "TEAM_ID": 2, "GP": 10, "PTS": 900, "REB": 0, "AST": 0,
+             "STL": 0, "BLK": 0, "FGA": 0, "FGM": 0, "FTA": 0, "FTM": 0, "TOV": 0},
+        ])
+        with mock.patch.object(app_module, "get_league_player_stats", return_value=league):
             data = app_module.roster_leaders(1, "2024-25")
         # (300+50+60+10+5) - ((200-100) + (50-40) + 25) = 290 over 10 games
         self.assertEqual(data["most_efficient"]["stat"], 29.0)
         self.assertEqual(data["top_scorer"]["stat"], 30.0)
-        self.assertEqual(data["top_scorer"]["player_id"], 77)
+        self.assertEqual(data["top_scorer"]["player_id"], 77)  # only this team's players
 
 
 class HomeApiTest(unittest.TestCase):
