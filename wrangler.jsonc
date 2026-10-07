@@ -1,0 +1,14 @@
+// Cloudflare Workers static assets: serves the static site build (dist/, written by
+// `flask --app app build`). Deployed by `flask --app app update` via build.py.
+{
+  "name": "courtvision",
+  "compatibility_date": "2026-10-06",
+  "assets": {
+    "directory": "./dist",
+    // /standings serves standings.html, like the Flask dev server's URLs.
+    "html_handling": "auto-trailing-slash",
+    // Missing files get dist/404.html with a 404 status. Pages rely on the 404 to
+    // tell "not on the site yet" apart from real data.
+    "not_found_handling": "404-page"
+  }
+}

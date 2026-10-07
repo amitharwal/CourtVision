@@ -1,23 +1,23 @@
 """
-Build Court Vision as a static site and deploy it to Cloudflare Pages.
+Build Court Vision as a static site and deploy it to Cloudflare (Workers static assets).
 
 stats.nba.com blocks cloud servers, so the site is built where the NBA API works
 (e.g. your own computer) from the data already in the cache, and deployed as plain
 files. Every file is the Flask app's own response for that URL, saved at the same
 path, so the static site and `python app.py` serve the same data:
 
-    /standings                          -> standings.html  (Pages serves it at /standings)
+    /standings                          -> standings.html  (Cloudflare serves it at /standings)
     /player/2544                        -> player/2544.html
     /data/standings/2025-26.json        -> data/standings/2025-26.json
 
 Use it through the CLI:
     flask --app app build               # write dist/
-    flask --app app preview             # serve dist/ the way Cloudflare Pages will
+    flask --app app preview             # serve dist/ the way Cloudflare will
     flask --app app update [--live | --players]   # fetch, build, deploy if anything changed
 
-Deploying needs Node.js (for npx wrangler) and, in the environment:
-    CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
-    COURTVISION_PAGES_PROJECT   Pages project name (default "courtvision")
+Deploying needs Node.js (for npx wrangler), wrangler.jsonc (the Worker's name and
+settings), and either `npx wrangler login` or, for scheduled jobs, CLOUDFLARE_API_TOKEN
+and CLOUDFLARE_ACCOUNT_ID in the environment.
 """
 import fcntl
 import hashlib
@@ -38,7 +38,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(ROOT, "dist")
 STATE_PATH = os.path.join(ROOT, "instance", "deploy_state.json")
 LOCK_PATH = os.path.join(ROOT, "instance", "build.lock")
-PAGES_FILE_LIMIT = 20_000  # Cloudflare Pages free plan: files per deployment
+FILE_LIMIT = 20_000  # Cloudflare free plan: static asset files per Worker version
 
 PAGES = ["home", "players_page", "team_trends", "standings", "shot_charts",
          "compare_players", "advanced_metrics", "privacy_policy"]
@@ -143,22 +143,22 @@ def build_site(out_dir=DIST_DIR):
             with open(path, "wb") as f:
                 f.write(resp.data)
 
-        # Pages serves 404.html for missing files; without one it would answer every
-        # missing data file with the home page instead.
+        # Cloudflare serves 404.html for missing files (not_found_handling in
+        # wrangler.jsonc), which pages tell apart from data by its 404 status.
         with open(os.path.join(tmp_dir, "404.html"), "wb") as f:
             f.write(client.get("/404").data)
 
     total = sum(len(names) for _, _, names in os.walk(tmp_dir))
-    if total > PAGES_FILE_LIMIT:
-        raise RuntimeError(f"{total} files: over the Cloudflare Pages limit of {PAGES_FILE_LIMIT}")
+    if total > FILE_LIMIT:
+        raise RuntimeError(f"{total} files: over the Cloudflare limit of {FILE_LIMIT}")
     shutil.rmtree(out_dir, ignore_errors=True)
     os.replace(tmp_dir, out_dir)
     return {"out": out_dir, "files": total, "skipped": skipped, "invalid": invalid,
             "seconds": time.time() - started}
 
 
-class _PagesHandler(http.server.SimpleHTTPRequestHandler):
-    """Serves a build like Cloudflare Pages: /standings -> standings.html, else 404.html."""
+class _CloudflareHandler(http.server.SimpleHTTPRequestHandler):
+    """Serves a build like Cloudflare: /standings -> standings.html, else 404.html."""
 
     def send_head(self):
         path = self.translate_path(self.path)
@@ -174,7 +174,7 @@ class _PagesHandler(http.server.SimpleHTTPRequestHandler):
 
 def preview(out_dir=DIST_DIR, port=8080):
     """Serve a build locally until interrupted."""
-    handler = partial(_PagesHandler, directory=out_dir)
+    handler = partial(_CloudflareHandler, directory=out_dir)
     with http.server.ThreadingHTTPServer(("127.0.0.1", port), handler) as server:
         print(f"Previewing {out_dir} at http://127.0.0.1:{port} (Ctrl+C to stop)")
         server.serve_forever()
@@ -202,14 +202,9 @@ def _load_state():
 
 
 def deploy(out_dir=DIST_DIR):
-    """Upload out_dir to Cloudflare Pages (only files Pages doesn't have yet are sent)."""
-    project = os.environ.get("COURTVISION_PAGES_PROJECT", "courtvision")
+    """Upload out_dir to Cloudflare as configured in wrangler.jsonc (only new or changed files are sent)."""
     wrangler = [shutil.which("wrangler")] if shutil.which("wrangler") else ["npx", "--yes", "wrangler"]
-    subprocess.run(
-        wrangler + ["pages", "deploy", out_dir, "--project-name", project, "--branch", "main",
-                    "--commit-dirty=true"],
-        check=True,
-    )
+    subprocess.run(wrangler + ["deploy", "--assets", out_dir], cwd=ROOT, check=True)
 
 
 @contextmanager

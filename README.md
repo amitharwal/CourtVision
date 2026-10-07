@@ -30,11 +30,11 @@ Set `PORT` to use a different port.
 stats.nba.com blocks or stalls requests from cloud servers (the "NBA API connectivity"
 GitHub Action confirms it: every endpoint times out from a GitHub/Azure runner). So the
 site is built where the NBA API works, such as your own computer, and deployed as plain
-files to [Cloudflare Pages](https://pages.cloudflare.com/) (free plan).
+files to Cloudflare ([Workers static assets](https://developers.cloudflare.com/workers/static-assets/), free plan).
 
 ```
-your computer                                                    Cloudflare Pages
-stats.nba.com -> instance/cache.sqlite3 -> flask build -> dist/ -- wrangler -->  courtvision.pages.dev
+your computer                                                    Cloudflare
+stats.nba.com -> instance/cache.sqlite3 -> flask build -> dist/ -- wrangler -->  courtvision.<you>.workers.dev
 ```
 
 `flask --app app build` saves every page and data file the cache can fill into `dist/`.
@@ -50,16 +50,19 @@ once a season has been fetched it stays on the site. To add an older season:
 
 ### One-time setup
 1. Install [Node.js](https://nodejs.org/) (deploys run `npx wrangler`).
-2. Create a free Cloudflare account, then the Pages project:
-   `npx wrangler login && npx wrangler pages project create courtvision --production-branch main`
-3. Create an API token with the **Cloudflare Pages: Edit** permission (My Profile → API
-   Tokens) and put it in `~/.config/courtvision/deploy.env` (`chmod 600`):
+2. Create a free Cloudflare account and log in: `npx wrangler login`. The Worker's name
+   and settings are in `wrangler.jsonc`; the first deploy creates it.
+3. Optional, recommended for scheduled jobs: create an API token from the **Edit
+   Cloudflare Workers** template (My Profile → API Tokens) and put it in
+   `~/.config/courtvision/deploy.env` (`chmod 600`). Without one, deploys use your login.
    ```bash
    CLOUDFLARE_API_TOKEN=...
-   CLOUDFLARE_ACCOUNT_ID=...                 # shown on the Cloudflare dashboard
-   COURTVISION_PAGES_PROJECT=courtvision     # optional, this is the default
+   CLOUDFLARE_ACCOUNT_ID=...                 # shown by `npx wrangler whoami`
    ```
 4. First deploy: `scripts/run_fetcher.sh nightly` (fetches everything, ~1 hour).
+
+The site is at `https://courtvision.<subdomain>.workers.dev`; the account's workers.dev
+subdomain can be changed in the Cloudflare dashboard (Workers & Pages → Settings).
 
 ### Keeping it up to date
 ```bash
@@ -75,7 +78,7 @@ the computer needs to be on and online.
 ### Previewing a build
 ```bash
 flask --app app build      # write dist/ from the current cache
-flask --app app preview    # http://127.0.0.1:8080, served the way Pages serves it
+flask --app app preview    # http://127.0.0.1:8080, served the way Cloudflare serves it
 ```
 `COURTVISION_OFFLINE=1 python app.py` also shows only cached data, with the dev server.
 
@@ -89,7 +92,7 @@ flask --app app preview    # http://127.0.0.1:8080, served the way Pages serves 
 ## Project layout
 - `app.py`: Flask routes (pages, and JSON data files under `/data/`)
 - `nba_client.py`: stats.nba.com access with retries and a memory + SQLite TTL cache
-- `build.py`: builds the static site from the cache and deploys it to Cloudflare Pages
+- `build.py`: builds the static site from the cache and deploys it to Cloudflare (`wrangler.jsonc`)
 - `metrics.py`: box-score derived metrics
 - `templates/`: Jinja templates; every page extends `base.html`
 - `static/css/`: per-page stylesheets; `static/js/`: shared scripts (`site-data.js` loads data files and searches players)

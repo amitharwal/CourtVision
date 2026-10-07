@@ -836,7 +836,7 @@ def not_found(e):
 
 # ------------------------------------------------------------------------------
 # Static site: build.py saves every page and data file the cache can fill, and
-# deploys the result to Cloudflare Pages.
+# deploys the result to Cloudflare (Workers static assets; see wrangler.jsonc).
 # ------------------------------------------------------------------------------
 @app.cli.command("build")
 @click.option("--out", default=None, help="Output folder (default: dist/).")
@@ -853,7 +853,7 @@ def build_command(out):
 @app.cli.command("preview")
 @click.option("--port", default=8080, help="Port to serve on.")
 def preview_command(port):
-    """Serve the built site (dist/) locally, the way Cloudflare Pages will."""
+    """Serve the built site (dist/) locally, the way Cloudflare will."""
     import build
 
     build.preview(port=port)
