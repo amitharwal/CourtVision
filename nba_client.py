@@ -498,7 +498,7 @@ def nbacall_retry(endpoint_cls, retries: int = 3, backoff: float = 0.5, **kwargs
     if last_err:
         raise last_err
 
-PLAYER_REFRESH_AGE = 7 * 24 * 3600  # refetch every player at least weekly (trades, bios)
+PLAYER_REFRESH_AGE = 7 * 24 * 3600  # refetch player bios at least weekly (trades, jerseys)
 
 def _games_played(season: str, season_type: str) -> dict:
     """{player_id: games played} from the league player table."""
@@ -514,13 +514,15 @@ def _player_job(pid: int, season: str, season_type: str, kind: str):
         "shot chart": lambda: get_shot_chart(pid, season, season_type),
     }[kind]
 
-def _player_unchanged(pid: int, season: str, season_type: str, kinds, games_played: int) -> bool:
+def _player_kinds_to_fetch(pid: int, season: str, season_type: str, kinds, games_played: int) -> list:
     """
-    True when every kind of this player's data is on disk, under PLAYER_REFRESH_AGE
-    old, and the cached game log has games_played games: there's nothing new to fetch.
+    Which kinds of this player's data need fetching. Stats (profile, game log, shot
+    chart) only change when the player plays, so they're refetched when missing or when
+    games_played differs from the cached game log. The bio (team, jersey) can change
+    without games, so it's refetched once it's over PLAYER_REFRESH_AGE old.
     """
     if _DISK is None:
-        return False
+        return list(kinds)
     keys = {
         "info": ("player_info", pid),
         "profile": ("player_profile", pid),
@@ -528,9 +530,11 @@ def _player_unchanged(pid: int, season: str, season_type: str, kinds, games_play
         "shot chart": ("shot_chart", pid, season, season_type),
     }
     stored = {kind: _DISK.get(keys[kind]) for kind in kinds}
-    if any(entry is None or _now() - entry[0] > PLAYER_REFRESH_AGE for entry in stored.values()):
-        return False
-    return len(stored["game log"][1]) == games_played
+    log = stored.get("game log")
+    new_games = log is None or len(log[1]) != games_played
+    return [kind for kind, entry in stored.items()
+            if entry is None or new_games and kind != "info"
+            or kind == "info" and _now() - entry[0] > PLAYER_REFRESH_AGE]
 
 def warm_cache(season: str = None, include_teams: bool = True, include_players: bool = False,
                live_only: bool = False, progress=None) -> dict:
@@ -545,8 +549,8 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
       shot chart for the season (~4 requests per player; run nightly), plus the
       playoff game log and shot chart of everyone who played in the playoffs
     progress(done, total, name) is called after each job if given.
-    Players whose games-played count matches their cached game log are skipped
-    (nothing new since the last fetch), unless their data is over a week old.
+    A player's stats are refetched only when their games played changed since the
+    last fetch, and their bio once a week (see _player_kinds_to_fetch).
     Returns {"season", "ok": [...], "failed": {name: error}, "unchanged": players skipped}.
     """
     from zoneinfo import ZoneInfo
@@ -599,11 +603,11 @@ def warm_cache(season: str = None, include_teams: bool = True, include_players: 
                 failed[f"{season_type} player list"] = str(e)
                 continue
             for pid, gp in games.items():
-                if _player_unchanged(pid, season, season_type, kinds, gp):
+                to_fetch = _player_kinds_to_fetch(pid, season, season_type, kinds, gp)
+                if not to_fetch:
                     unchanged += 1
-                    continue
                 player_jobs += [(f"player {pid} {season_type} {kind}", _player_job(pid, season, season_type, kind))
-                                for kind in kinds]
+                                for kind in to_fetch]
         total += len(player_jobs)
         for i, (name, job) in enumerate(player_jobs, len(jobs) + 1):
             run(name, job)

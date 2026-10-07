@@ -135,22 +135,24 @@ class PlayerRefreshTest(unittest.TestCase):
                            (("shot_chart", pid, "2025-26", "Regular Season"), pd.DataFrame())]:
             self.disk.set(key, ts, value)
 
-    def unchanged(self, pid, games):
-        return nba_client._player_unchanged(pid, "2025-26", "Regular Season",
-                                            ("info", "profile", "game log", "shot chart"), games)
+    def to_fetch(self, pid, games):
+        return nba_client._player_kinds_to_fetch(pid, "2025-26", "Regular Season",
+                                                 ("info", "profile", "game log", "shot chart"), games)
 
-    def test_same_games_played_is_unchanged(self):
+    def test_same_games_played_needs_nothing(self):
         self.store_player(1, games=3)
-        self.assertTrue(self.unchanged(1, 3))
+        self.assertEqual(self.to_fetch(1, 3), [])
 
-    def test_new_game_means_refetch(self):
+    def test_new_game_refetches_stats_but_not_bio(self):
         self.store_player(1, games=3)
-        self.assertFalse(self.unchanged(1, 4))
+        self.assertEqual(self.to_fetch(1, 4), ["profile", "game log", "shot chart"])
 
-    def test_missing_or_week_old_data_means_refetch(self):
-        self.assertFalse(self.unchanged(1, 0))
+    def test_missing_data_is_fetched(self):
+        self.assertEqual(self.to_fetch(1, 0), ["info", "profile", "game log", "shot chart"])
+
+    def test_week_old_bio_is_refreshed_alone(self):
         self.store_player(2, games=3, age=8 * 24 * 3600)
-        self.assertFalse(self.unchanged(2, 3))
+        self.assertEqual(self.to_fetch(2, 3), ["info"])
 
     def test_warm_cache_fetches_only_changed_players(self):
         self.store_player(1, games=3)
